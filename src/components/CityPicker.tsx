@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import type { CityMap } from '../../shared/types';
+import { useEffect, useRef, useState } from 'react';
+import type { CityItem } from '../../shared/types';
 
 interface Props {
   selectedId: number;
@@ -8,39 +8,39 @@ interface Props {
 }
 
 export default function CityPicker({ selectedId, selectedName, onSelect }: Props) {
-  const [cities, setCities] = useState<CityMap>({});
-  const [q, setQ] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState('');
+  const [q, setQ] = useState(selectedName || '');
+  const [items, setItems] = useState<CityItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [searched, setSearched] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    (async () => {
+    if (timer.current) clearTimeout(timer.current);
+    const needle = q.trim();
+    if (!needle) {
+      setItems([]);
+      setSearched(false);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    timer.current = setTimeout(async () => {
+      let res: CityItem[] = [];
       try {
-        let map = await window.api.getCities();
-        if (Object.keys(map).length > 0) {
-          setCities(map);
-          // silent background refresh
-          window.api.fetchCities().then(setCities).catch(() => undefined);
-        } else {
-          map = await window.api.fetchCities();
-          setCities(map);
-        }
-        setLoading(false);
-      } catch (e) {
-        setErr(String(e));
-        setLoading(false);
+        res = await window.api.searchCities(needle);
+      } catch {
+        res = [];
       }
-    })();
-  }, []);
+      setItems(res);
+      setSearched(true);
+      setLoading(false);
+    }, 250);
+    return () => {
+      if (timer.current) clearTimeout(timer.current);
+    };
+  }, [q]);
 
-  const filtered = useMemo(() => {
-    const entries = Object.entries(cities);
-    const needle = q.trim().toLowerCase();
-    if (!needle) return entries.slice(0, 40);
-    return entries
-      .filter(([id, name]) => name.toLowerCase().includes(needle) || id === q.trim())
-      .slice(0, 80);
-  }, [cities, q]);
+  const displayName = (i: CityItem) => (i.region ? `${i.name} (${i.region})` : i.name);
 
   return (
     <div>
@@ -52,9 +52,9 @@ export default function CityPicker({ selectedId, selectedName, onSelect }: Props
           onChange={(e) => setQ(e.target.value)}
           style={{ flex: 1 }}
         />
-        {loading && <span className="hint">загрузка…</span>}
+        {loading && <span className="hint">поиск…</span>}
+        {!loading && searched && <span className="hint">найдено: {items.length}</span>}
       </div>
-      {err && <p className="errbox" style={{ marginTop: 8 }}>{err}</p>}
       <div style={{ position: 'relative', marginTop: 8 }}>
         <div
           style={{
@@ -71,26 +71,38 @@ export default function CityPicker({ selectedId, selectedName, onSelect }: Props
             padding: 4
           }}
         >
-          {filtered.map(([id, name]) => (
+          {items.map((i) => (
             <div
-              key={id}
-              onClick={() => onSelect(Number(id), name)}
+              key={i.id}
+              onClick={() => {
+                onSelect(Number(i.id), displayName(i));
+                setQ(i.name);
+              }}
               role="button"
               style={{
                 cursor: 'pointer',
                 padding: '6px 10px',
                 borderRadius: 6,
-                background: Number(id) === selectedId ? 'rgba(76,134,245,0.2)' : 'transparent',
+                background: Number(i.id) === selectedId ? 'rgba(76,134,245,0.2)' : 'transparent',
                 display: 'flex',
                 justifyContent: 'space-between',
                 gap: 8
               }}
             >
-              <span>{name}</span>
-              <span className="hint">#{id}</span>
+              <span>
+                {i.name}
+                {i.region ? <span className="hint"> · {i.region}</span> : null}
+              </span>
+              <span className="hint">#{i.id}</span>
             </div>
           ))}
-          {filtered.length === 0 && <div className="hint" style={{ padding: 8 }}>Ничего не найдено</div>}
+          {items.length === 0 && !loading && (
+            <div className="hint" style={{ padding: 8 }}>
+              {!searched
+                ? `Введите название города. Сейчас выбрано: ${selectedName || 'не выбрано'}${selectedId ? ` (#${selectedId})` : ''}.`
+                : `Ничего не найдено по «${q.trim()}». Сейчас выбрано: ${selectedName || 'не выбрано'}${selectedId ? ` (#${selectedId})` : ''}.`}
+            </div>
+          )}
         </div>
       </div>
       <div className="row" style={{ marginTop: 4 }}>

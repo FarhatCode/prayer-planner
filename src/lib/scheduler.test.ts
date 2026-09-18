@@ -111,6 +111,22 @@ describe('scheduler', () => {
     expect(withRem.length).toBeGreaterThan(0);
   });
 
+  it('break info counts not-yet-passed slots, not only the first', () => {
+    const one: Task[] = [{ id: 's1', name: 'Курс', hours: 3, desc: '', color: '#4c86f5', canMove: false }];
+    const plan = buildDayPlan({ settings: DEFAULT_SETTINGS, tasks: one, prayers: FX });
+    const entries = plan.entries;
+    expect(entries.some((e) => e.type === 'prayer' && e.end)).toBe(true);
+    expect(entries.some((e) => e.type === 'study' && e.end)).toBe(true);
+    expect(entries.some((e) => e.type === 'break' && e.end)).toBe(true);
+    const studies = entries.filter((e) => e.type === 'study' && e.taskId === 's1');
+    expect(studies.length).toBe(4);
+    // второй перерыв идёт после двух слотов — остаться должно 2 слота (90 мин), а не 180
+    const breaks = entries.filter((e) => e.type === 'break');
+    expect(breaks.length).toBe(3);
+    const afterTwo = breaks[1];
+    expect(afterTwo.remaining?.['s1']).toBe(90);
+  });
+
   it('warns when tasks cannot fit (never silently trims)', () => {
     const huge: Task[] = [
       { id: 'h1', name: 'Огромная задача', hours: 16, desc: '', color: '#f87171', canMove: true }

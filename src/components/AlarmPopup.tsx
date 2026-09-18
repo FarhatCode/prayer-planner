@@ -12,7 +12,7 @@ export default function AlarmPopup({ payload }: { payload: unknown }) {
     const audio = url ? new Audio(url) : null;
     if (audio) {
       audio.loop = true;
-      audio.volume = 1;
+      audio.volume = Math.max(0, Math.min(1, p?.volume ?? 1));
       audioRef.current = audio;
       void audio.play().catch(() => {
         /* autoplay blocked — user clicks Ок */

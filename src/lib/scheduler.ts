@@ -232,6 +232,7 @@ export function buildDayPlan(input: BuildInput): DayPlan {
     if (pk) {
       entries.push({
         time: toHHMM(win.a),
+        end: toHHMM(win.b),
         type: 'prayer',
         title: SHORT_LABELS[w.from] ?? BLOCK_LABELS[w.from],
         text: `${SHORT_LABELS[w.from] ?? BLOCK_LABELS[w.from]} · ${toHHMM(win.a)}`,
@@ -252,6 +253,7 @@ export function buildDayPlan(input: BuildInput): DayPlan {
       const item = flat[i];
       entries.push({
         time: toHHMM(cursor),
+        end: toHHMM(cursor + item.dur),
         type: 'study',
         taskId: item.t.task.id,
         title:
@@ -263,6 +265,7 @@ export function buildDayPlan(input: BuildInput): DayPlan {
       if (i < flat.length - 1) {
         entries.push({
           time: toHHMM(cursor),
+          end: toHHMM(cursor + b),
           type: 'break',
           title: `Перерыв ${b} мин`,
           text: '',
@@ -276,6 +279,7 @@ export function buildDayPlan(input: BuildInput): DayPlan {
     if (leftover > 0) {
       entries.push({
         time: toHHMM(cursor),
+        end: toHHMM(win.workB),
         type: 'rest',
         title: w.restLabel,
         text: w.restLabel,
@@ -285,6 +289,7 @@ export function buildDayPlan(input: BuildInput): DayPlan {
     if (w.endPadMin > 0) {
       entries.push({
         time: toHHMM(win.workB),
+        end: toHHMM(win.b),
         type: 'prep',
         title: `Подготовка к ${SHORT_LABELS[w.to] ?? BLOCK_LABELS[w.to]}`,
         text: `Приготовления к ${SHORT_LABELS[w.to] ?? BLOCK_LABELS[w.to]}`,
@@ -316,27 +321,30 @@ export function buildDayPlan(input: BuildInput): DayPlan {
   }
   const finalEntries = [...seen.values()];
 
-  // 6) remaining-tasks info for breaks
-  const firstStudy = new Map<string, number>();
+  // 6) remaining-tasks info for breaks (любой ещё не прошедший слот задачи)
+  const durations: Record<string, number[]> = {};
+  for (const t of prepared) durations[t.task.id] = t.slots.map((s) => s.dur);
+  const done: Record<string, number> = {};
   for (const e of finalEntries) {
-    if (e.type === 'study' && e.taskId && !firstStudy.has(e.taskId)) {
-      firstStudy.set(e.taskId, MINP(e));
+    if (e.type === 'study' && e.taskId) {
+      done[e.taskId] = (done[e.taskId] ?? 0) + 1;
+      continue;
     }
-  }
-  for (const e of finalEntries) {
     if (e.type !== 'break') continue;
     const m = MINP(e);
     const rem: Record<string, number> = {};
-    for (const t of tasks) {
-      const fs = firstStudy.get(t.id);
-      if (fs !== undefined && fs > m) rem[t.id] = t.hours;
+    for (const id of Object.keys(durations)) {
+      const idx = done[id] ?? 0;
+      let left = 0;
+      for (let i = idx; i < durations[id].length; i++) left += durations[id][i];
+      if (left > 0) rem[id] = left;
     }
     if (Object.keys(rem).length > 0) {
       e.remaining = rem;
       const lines = Object.entries(rem)
-        .map(([id, h]) => {
+        .map(([id, mins]) => {
           const name = tasks.find((x) => x.id === id)?.name ?? id;
-          return `• ${name} — ${hLabel(h)}`;
+          return `• ${name} — ${minsLabel(mins)}`;
         })
         .join('\n');
       e.text = `Осталось по плану:\n${lines}`;
@@ -402,15 +410,10 @@ function winLabel(w: { from: AnchorKey; to: AnchorKey }): string {
   return `${BLOCK_LABELS[w.from] ?? w.from} → ${BLOCK_LABELS[w.to] ?? w.to}`;
 }
 
-function hLabel(h: number): string {
-  const v = Math.round(h * 10) / 10;
-  const n = Math.floor(v);
-  const last = n % 10;
-  const pre = Math.floor(n / 10) % 10;
-  let w: string;
-  if (v === 1) w = 'час';
-  else if (v >= 2 && v <= 4 && pre !== 1) w = 'часа';
-  else w = 'часов';
-  const s = String(v).replace('.', ',').replace(',0', '');
-  return `${s} ${w}`;
+function minsLabel(min: number): string {
+  const h = Math.floor(min / 60);
+  const m = Math.round(min % 60);
+  if (h === 0) return `${m} мин`;
+  const hWord = h === 1 ? 'час' : h >= 2 && h <= 4 ? 'часа' : 'часов';
+  return m > 0 ? `${h} ${hWord} ${m} мин` : `${h} ${hWord}`;
 }

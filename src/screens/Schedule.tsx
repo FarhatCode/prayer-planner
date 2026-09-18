@@ -53,7 +53,7 @@ function EntryRow({ e }: { e: PEntry }) {
   const past = parseHHMM(e.time) <= parseHHMM(nowHHMM());
   return (
     <div className={`entry type-${e.type}`} style={{ opacity: past ? 0.55 : 1 }}>
-      <div className="etime">{e.time}</div>
+      <div className="etime">{e.end ? `${e.time} — ${e.end}` : e.time}</div>
       <div className="edot" style={{ background: DOT[e.type] ?? '#94a3b8' }} />
       <div className="ebody">
         <div className="etitle">{e.title}</div>

@@ -94,6 +94,7 @@ export type PEntryType = 'wake' | 'prayer' | 'study' | 'break' | 'rest' | 'prep'
 
 export interface PEntry {
   time: string; // "HH:MM"
+  end?: string; // "HH:MM" — до какого времени длится пункт (для панели)
   type: PEntryType;
   taskId?: string;
   title: string;
@@ -126,6 +127,12 @@ export interface DayPlan {
 
 export type CityMap = Record<string, string>;
 
+export interface CityItem {
+  id: string;
+  name: string;
+  region?: string;
+}
+
 export interface PrayerFetchResult {
   ok: boolean;
   offline: boolean;
@@ -157,6 +164,7 @@ export interface UpdateState {
 export interface AlarmPayload {
   entry: PEntry;
   test: boolean;
+  volume?: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {

@@ -1,8 +1,9 @@
 import { app, BrowserWindow, ipcMain, Menu, nativeImage, screen, Tray } from 'electron';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import type { AlarmPayload, DayPlan, PrayerFetchResult, RegisterResult, Settings, Task, UpdateState } from '../shared/types';
 import { toHHMM } from '../src/lib/fmt';
-import { fetchCities, fetchPrayerTimes, type CacheStore } from '../src/lib/prayerTimes';
+import { fetchPrayerTimes, searchCities, type CacheStore } from '../src/lib/prayerTimes';
 import { buildDayPlan } from '../src/lib/scheduler';
 import { AlarmEngine } from './alarmEngine';
 import { storage, todayStr } from './storage';
@@ -81,6 +82,10 @@ function positionAlarm(win: BrowserWindow): void {
 }
 
 function openAlarm(payload: AlarmPayload): void {
+  const data = Buffer.from(
+    JSON.stringify({ ...payload, volume: storage.settings().volume }),
+    'utf8'
+  ).toString('base64url');
   const win = new BrowserWindow({
     width: 480,
     height: 240,
@@ -98,7 +103,6 @@ function openAlarm(payload: AlarmPayload): void {
       sandbox: false
     }
   });
-  const data = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
   if (devServer) {
     win.loadURL(`${devServer.replace(/\/$/, '')}/?route=alarm&payload=${data}`);
   } else {
@@ -158,7 +162,7 @@ function launchInfo(): LaunchInfo {
 
 function alarmAudioUrl(): string {
   if (devServer) return `${devServer.replace(/\/$/, '')}/alarm.wav`;
-  return path.join(process.resourcesPath, 'alarm.wav');
+  return pathToFileURL(path.join(process.resourcesPath, 'alarm.wav')).href;
 }
 
 function lookupPrayer(cityId: number): PrayerFetchResult {
@@ -235,13 +239,11 @@ function setupIpc(): void {
   });
 
   ipcMain.handle('cities:get', () => storage.cities());
-  ipcMain.handle('cities:fetch', async () => {
+  ipcMain.handle('cities:search', async (_e, q: string) => {
     try {
-      const map = await fetchCities();
-      storage.setCities(map);
-      return map;
+      return await searchCities(String(q ?? '').trim());
     } catch {
-      return storage.cities();
+      return [];
     }
   });
 

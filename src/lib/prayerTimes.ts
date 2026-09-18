@@ -1,9 +1,9 @@
-import type { CityMap, PrayerCache, PrayerFetchResult, PrayTimesData } from '../../shared/types';
+import type { CityItem, PrayerCache, PrayerFetchResult, PrayTimesData } from '../../shared/types';
 import { PRAYER_LABELS } from '../../shared/types';
 
 export const API = {
   praytimes: (cityId: number) => `https://namaztimes.kz/api/praytimes?id=${cityId}&type=json`,
-  cities: 'https://namaztimes.kz/ru/api/cities?type=json'
+  citiesSearch: (q: string) => `https://namaztimes.kz/ru/json/sity?q=${encodeURIComponent(q)}`
 };
 
 export interface HttpLike {
@@ -133,24 +133,39 @@ export async function fetchPrayerTimes(
   }
 }
 
-export async function fetchCities(
+export interface SityNode {
+  text?: unknown;
+  id?: unknown;
+  children?: SityNode[];
+}
+
+export async function searchCities(
+  q: string,
   http: HttpLike = defaultHttp(),
   timeoutMs = 20000
-): Promise<CityMap> {
+): Promise<CityItem[]> {
+  const needle = q.trim();
+  if (!needle) return [];
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await http.fetch(API.cities, { signal: controller.signal });
+    const res = await http.fetch(API.citiesSearch(needle), { signal: controller.signal });
     clearTimeout(timer);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const json = (await res.text()).trim();
-    const obj = JSON.parse(json) as Record<string, unknown>;
-    const map: CityMap = {};
-    for (const k of Object.keys(obj)) {
-      const v = obj[k];
-      if (typeof v === 'string') map[k] = v;
+    const json = JSON.parse((await res.text()).trim()) as { results?: SityNode[] };
+    const items: CityItem[] = [];
+    for (const group of json.results ?? []) {
+      const region = typeof group.text === 'string' && group.text.length > 0 ? group.text : undefined;
+      for (const child of group.children ?? []) {
+        if (typeof child.id === 'undefined' || typeof child.text !== 'string') continue;
+        items.push({
+          id: String(child.id),
+          name: child.text,
+          region: region && region !== child.text ? region : undefined
+        });
+      }
     }
-    return map;
+    return items;
   } catch (err) {
     clearTimeout(timer);
     throw err;

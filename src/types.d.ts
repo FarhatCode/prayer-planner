@@ -1,4 +1,4 @@
-import type { CityMap, DayPlan, PrayerFetchResult, RegisterResult, Settings, Task, UpdateState } from '../shared/types';
+import type { CityItem, CityMap, DayPlan, PrayerFetchResult, RegisterResult, Settings, Task, UpdateState } from '../shared/types';
 
 declare global {
   interface Window {
@@ -10,7 +10,7 @@ declare global {
       getState(): Promise<UpdateState>;
       refreshPrayers(): Promise<PrayerFetchResult>;
       getCities(): Promise<CityMap>;
-      fetchCities(): Promise<CityMap>;
+      searchCities(q: string): Promise<CityItem[]>;
       buildSchedule(date?: string): Promise<DayPlan>;
       getPlan(): Promise<DayPlan | null>;
       registerAlarms(): Promise<RegisterResult>;
