@@ -1,0 +1,28 @@
+appId: com.moyden.app
+productName: Мой день
+directories:
+  output: release
+  buildResources: resources
+files:
+  - dist/**
+  - dist-electron/**
+  - resources/alarm.wav
+extraResources:
+  - from: resources/alarm.wav
+    to: alarm.wav
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+  icon: resources/icon.png
+  publisherName: MoyDen
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Мой день
+publish: null
