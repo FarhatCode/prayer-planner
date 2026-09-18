@@ -57,6 +57,17 @@ function App() {
 
   const prayer = state.prayer;
   const offline = !prayer.ok || prayer.offline;
+  const netBadge =
+    !prayer.ok
+      ? 'нет намазов'
+      : offline
+        ? `кэш · от ${prayer.sourceDate}`
+        : 'онлайн';
+  const netTitle = !prayer.ok
+    ? 'Нет данных о намазах.'
+    : offline
+      ? `Времена намазов показываются из сохранённого кэша (от ${prayer.sourceDate}). Кэш действителен только на этот день.`
+      : 'Времена намазов загружены из интернета.';
 
   return (
     <div className="app">
@@ -75,10 +86,14 @@ function App() {
         </nav>
         <div className="topmeta">
           <span className="city">{state.settings.cityName || 'Город не выбран'}</span>
-          <span className={offline ? 'badge off' : 'badge on'}>
-            {offline ? (prayer.fromCache ? `офлайн · кэш от ${prayer.sourceDate}` : 'офлайн') : 'онлайн'}
+          <span title={netTitle} className={offline ? 'badge off' : 'badge on'}>
+            {netBadge}
           </span>
-          {busy && <span className="badge busy">…</span>}
+          {busy && (
+            <span className="badge busy" title="Выполняется…">
+              <span className="spinner-mini" />
+            </span>
+          )}
         </div>
       </header>
 

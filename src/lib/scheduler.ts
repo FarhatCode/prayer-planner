@@ -365,8 +365,15 @@ export function buildDayPlan(input: BuildInput): DayPlan {
 
   if (warnings.length === 0) warnings.push('Все задачи размещены. Расписание оптимально.');
 
+  const planDate = input.date ?? todayStr();
+  if (prayers.date && !sameCalendarDay(prayers.date, planDate)) {
+    warnings.push(
+      `Времена намазов из кэша от ${prayers.date}, а расписание на ${planDate}. Кэш действителен только на ${prayers.date} — обновите времена при наличии интернета.`
+    );
+  }
+
   return {
-    date: input.date ?? todayStr(),
+    date: planDate,
     sourceDate: prayers.date,
     fromCache: false,
     cityId: settings.cityId,
@@ -375,6 +382,13 @@ export function buildDayPlan(input: BuildInput): DayPlan {
     entries: finalEntries,
     warnings
   };
+}
+
+function sameCalendarDay(a: string, b: string): boolean {
+  const pa = a.split('-').map(Number);
+  const pb = b.split('-').map(Number);
+  if (pa.length < 3 || pb.length < 3) return a === b;
+  return pa[0] === pb[0] && pa[1] === pb[1] && pa[2] === pb[2];
 }
 
 function anchorsOf(settings: Settings, prayers: PrayerCache): Record<AnchorKey, number> {

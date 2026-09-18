@@ -48,7 +48,13 @@ export default function Settings({ state, onSaved }: Props) {
         const attrs = res.attributes;
         setForm((f) => ({ ...f, cityId: Number(attrs.ID), cityName: attrs.CityName }));
       }
-      setMsg(res.ok ? `Времена обновлены (${res.sourceDate})${res.offline ? ' — из кэша' : ''}` : `Ошибка: ${res.error}`);
+      setMsg(
+        res.ok
+          ? res.offline
+            ? `Времена из кэша (${res.sourceDate}) - сеть недоступна, кэш действителен только на эту дату.`
+            : `Времена обновлены: ${res.sourceDate}.`
+          : `Ошибка: ${res.error}`
+      );
     } catch (e) {
       setMsg(String(e));
     }

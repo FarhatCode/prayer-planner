@@ -19,6 +19,8 @@ let tray: Tray | null = null;
 let quitting = false;
 const alarmWindows = new Set<BrowserWindow>();
 
+let lastNet: { cityId: number; date: string } | null = null;
+
 const prayerCacheStore: CacheStore = {
   read: () => storage.prayerCache(),
   write: (c) => storage.setPrayerCache(c)
@@ -172,10 +174,11 @@ function alarmAudioUrl(): string {
 function lookupPrayer(cityId: number): PrayerFetchResult {
   const c = storage.prayerCache();
   if (c && c.cityId === cityId) {
+    const net = lastNet !== null && lastNet.cityId === cityId && lastNet.date === c.date;
     return {
       ok: true,
-      offline: true,
-      fromCache: true,
+      offline: !net,
+      fromCache: !net,
       sourceDate: c.date,
       fetchedAt: c.fetchedAt,
       prayers: c.praytimes,
@@ -199,7 +202,8 @@ async function refreshPrayersBestEffort(): Promise<void> {
     const s = storage.settings();
     const cache = storage.prayerCache();
     if (!cache || cache.date !== todayStr()) {
-      await fetchPrayerTimes(s.cityId, prayerCacheStore);
+      const res = await fetchPrayerTimes(s.cityId, prayerCacheStore);
+      if (res.ok && !res.offline) lastNet = { cityId: s.cityId, date: res.sourceDate };
     }
   } catch {
     /* offline — keep cache */
@@ -236,6 +240,7 @@ function setupIpc(): void {
   ipcMain.handle('prayer:refresh', async (): Promise<PrayerFetchResult> => {
     const s = storage.settings();
     const res = await fetchPrayerTimes(s.cityId, prayerCacheStore);
+    if (res.ok && !res.offline) lastNet = { cityId: s.cityId, date: res.sourceDate };
     if (res.ok && res.attributes && res.attributes.CityName && s.cityName !== res.attributes.CityName) {
       storage.setSettings({ cityName: res.attributes.CityName });
     }
@@ -253,20 +258,30 @@ function setupIpc(): void {
 
   ipcMain.handle('schedule:build', async (_e, date?: string): Promise<DayPlan> => {
     const settings = storage.settings();
-    let cache = storage.prayerCache();
-    let fromCache = cache !== null;
-    if (!cache) {
-      const res = await fetchPrayerTimes(settings.cityId, prayerCacheStore);
-      fromCache = res.fromCache;
-      cache = storage.prayerCache();
+    let res: PrayerFetchResult = {
+      ok: false,
+      offline: true,
+      fromCache: false,
+      sourceDate: '',
+      fetchedAt: '',
+      prayers: null,
+      attributes: null,
+      error: 'fetch failed'
+    };
+    try {
+      res = await fetchPrayerTimes(settings.cityId, prayerCacheStore, undefined, 5000);
+      if (res.ok && !res.offline) lastNet = { cityId: settings.cityId, date: res.sourceDate };
+    } catch {
+      /* offline — план строится по кэшу */
     }
+    const cache = storage.prayerCache();
     if (!cache) {
       throw new Error(
         'Нет времен намазов (офлайн и нет кэша). Подключитесь к интернету один раз или укажите город в настройках.'
       );
     }
     const plan = buildDayPlan({ settings, tasks: storage.tasks(), prayers: cache, date: date ?? todayStr() });
-    plan.fromCache = fromCache;
+    plan.fromCache = res.offline || (res.sourceDate.length === 0 && !lastNet);
     plan.sourceDate = cache.date;
     storage.setPlan(plan.date, plan);
     return plan;

@@ -151,8 +151,6 @@ export default function Schedule({ state, setBusy }: Props) {
 
   if (!plan) return null;
 
-  const offline = !state.prayer.ok || state.prayer.offline;
-
   return (
     <div>
       <div className="panel">
@@ -160,8 +158,16 @@ export default function Schedule({ state, setBusy }: Props) {
           <div>
             <h2 style={{ marginBottom: 4 }}>Расписание на {formatDateRu(plan.date)}</h2>
             <p className="sub" style={{ margin: 0 }}>
-              {plan.cityName} · времена намазов: {plan.sourceDate}
-              {offline && <span className="badge off" style={{ marginLeft: 8 }}>кэш · нет интернета</span>}
+              {plan.cityName} · времена намазов от {plan.sourceDate}
+              {plan.fromCache && (
+                <span
+                  className="badge off"
+                  style={{ marginLeft: 8 }}
+                  title={`Времена взяты из сохранённого кэша (действительны только на ${plan.sourceDate}) — свежие намазы с namaztimes.kz не загрузились. Проверьте интернет и нажмите «Обновить намазы».`}
+                >
+                  кэш · сеть недоступна
+                </span>
+              )}
             </p>
           </div>
           <div className="row">
