@@ -76,7 +76,11 @@ function createMainWindow(): BrowserWindow {
 }
 
 function positionAlarm(win: BrowserWindow): void {
-  const wa = screen.getPrimaryDisplay().workArea;
+  const wa = (
+    mainWindow && !mainWindow.isDestroyed()
+      ? screen.getDisplayMatching(mainWindow.getBounds())
+      : screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
+  ).workArea;
   const [w, h] = win.getSize();
   win.setPosition(wa.x + wa.width - w - 16, wa.y + wa.height - h - 16);
 }

@@ -15,14 +15,20 @@ export default function AlarmPopup({ payload }: { payload: unknown }) {
       audio.volume = Math.max(0, Math.min(1, p?.volume ?? 1));
       audioRef.current = audio;
       void audio.play().catch(() => {
-        /* autoplay blocked — user clicks Ок */
+        /* autoplay blocked — запустим по клику */
       });
     }
+    const startAudio = () => {
+      const a = audioRef.current;
+      if (a && a.paused) void a.play().catch(() => undefined);
+    };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') window.close();
     };
+    window.addEventListener('pointerdown', startAudio);
     window.addEventListener('keydown', onKey);
     return () => {
+      window.removeEventListener('pointerdown', startAudio);
       window.removeEventListener('keydown', onKey);
       if (audio) {
         audio.pause();

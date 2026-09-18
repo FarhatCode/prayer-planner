@@ -12,7 +12,9 @@ export default function CityPicker({ selectedId, selectedName, onSelect }: Props
   const [items, setItems] = useState<CityItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
+  const [open, setOpen] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (timer.current) clearTimeout(timer.current);
@@ -34,6 +36,7 @@ export default function CityPicker({ selectedId, selectedName, onSelect }: Props
       setItems(res);
       setSearched(true);
       setLoading(false);
+      setOpen(true);
     }, 250);
     return () => {
       if (timer.current) clearTimeout(timer.current);
@@ -49,62 +52,74 @@ export default function CityPicker({ selectedId, selectedName, onSelect }: Props
           type="text"
           placeholder="Поиск города…"
           value={q}
-          onChange={(e) => setQ(e.target.value)}
+          onFocus={() => setOpen(true)}
+          onBlur={() => {
+            blurTimer.current = setTimeout(() => setOpen(false), 150);
+          }}
+          onChange={(e) => {
+            setQ(e.target.value);
+            setOpen(true);
+          }}
           style={{ flex: 1 }}
+          autoComplete="off"
         />
         {loading && <span className="hint">поиск…</span>}
         {!loading && searched && <span className="hint">найдено: {items.length}</span>}
       </div>
-      <div style={{ position: 'relative', marginTop: 8 }}>
-        <div
-          style={{
-            position: 'absolute',
-            left: 0,
-            right: 0,
-            top: 0,
-            zIndex: 20,
-            background: '#111827',
-            border: '1px solid #334155',
-            borderRadius: 10,
-            maxHeight: 240,
-            overflowY: 'auto',
-            padding: 4
-          }}
-        >
-          {items.map((i) => (
-            <div
-              key={i.id}
-              onClick={() => {
-                onSelect(Number(i.id), displayName(i));
-                setQ(i.name);
-              }}
-              role="button"
-              style={{
-                cursor: 'pointer',
-                padding: '6px 10px',
-                borderRadius: 6,
-                background: Number(i.id) === selectedId ? 'rgba(76,134,245,0.2)' : 'transparent',
-                display: 'flex',
-                justifyContent: 'space-between',
-                gap: 8
-              }}
-            >
-              <span>
-                {i.name}
-                {i.region ? <span className="hint"> · {i.region}</span> : null}
-              </span>
-              <span className="hint">#{i.id}</span>
-            </div>
-          ))}
-          {items.length === 0 && !loading && (
-            <div className="hint" style={{ padding: 8 }}>
-              {!searched
-                ? `Введите название города. Сейчас выбрано: ${selectedName || 'не выбрано'}${selectedId ? ` (#${selectedId})` : ''}.`
-                : `Ничего не найдено по «${q.trim()}». Сейчас выбрано: ${selectedName || 'не выбрано'}${selectedId ? ` (#${selectedId})` : ''}.`}
-            </div>
-          )}
+      {open && (
+        <div style={{ position: 'relative', marginTop: 8 }}>
+          <div
+            style={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              top: 0,
+              zIndex: 20,
+              background: '#111827',
+              border: '1px solid #334155',
+              borderRadius: 10,
+              maxHeight: 240,
+              overflowY: 'auto',
+              padding: 4
+            }}
+          >
+            {items.map((i) => (
+              <div
+                key={i.id}
+                onMouseDown={() => {
+                  if (blurTimer.current) clearTimeout(blurTimer.current);
+                  onSelect(Number(i.id), displayName(i));
+                  setQ(i.name);
+                  setOpen(false);
+                }}
+                role="button"
+                style={{
+                  cursor: 'pointer',
+                  padding: '6px 10px',
+                  borderRadius: 6,
+                  background: Number(i.id) === selectedId ? 'rgba(76,134,245,0.2)' : 'transparent',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  gap: 8
+                }}
+              >
+                <span>
+                  {i.name}
+                  {i.region ? <span className="hint"> · {i.region}</span> : null}
+                </span>
+                <span className="hint">#{i.id}</span>
+              </div>
+            ))}
+            {items.length === 0 && !loading && (
+              <div className="hint" style={{ padding: 8 }}>
+                {!searched
+                  ? `Введите название города. Сейчас выбрано: ${selectedName || 'не выбрано'}${selectedId ? ` (#${selectedId})` : ''}.`
+                  : `Ничего не найдено по «${q.trim()}». Сейчас выбрано: ${selectedName || 'не выбрано'}${selectedId ? ` (#${selectedId})` : ''}.`}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
       <div className="row" style={{ marginTop: 4 }}>
         <span>
           Выбрано: <b>{selectedName || 'не выбрано'}</b> #{selectedId}

@@ -80,6 +80,18 @@ export default function Schedule({ state, setBusy }: Props) {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [reg, setReg] = useState<RegisterResult | null>(null);
+  const [soundMsg, setSoundMsg] = useState('');
+
+  async function soundTest(): Promise<void> {
+    setSoundMsg('Проверяю…');
+    try {
+      await window.api.testAlarm();
+      setSoundMsg('Открыл окно проверки. Если звука нет — нажмите внутри окна.');
+    } catch (e) {
+      setSoundMsg(`Ошибка: ${String(e)}`);
+    }
+    setTimeout(() => setSoundMsg(''), 6000);
+  }
 
   async function build(refetch: boolean): Promise<void> {
     setLoading(true);
@@ -162,9 +174,10 @@ export default function Schedule({ state, setBusy }: Props) {
             <button className="btn" onClick={() => void register()}>
               {state.settings.useTaskScheduler ? 'Зарегистрировать будильники' : 'Включить на сегодня'}
             </button>
-            <button className="btn ghost" onClick={() => void window.api.testAlarm()}>
+            <button className="btn ghost" onClick={() => void soundTest()}>
               Проверить звук
             </button>
+            {soundMsg && <span className="hint">{soundMsg}</span>}
           </div>
         </div>
       </div>

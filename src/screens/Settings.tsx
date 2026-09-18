@@ -22,6 +22,18 @@ export default function Settings({ state, onSaved }: Props) {
   const [preview, setPreview] = useState<PrayerFetchResult | null>(state.prayer);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
+  const [soundMsg, setSoundMsg] = useState('');
+
+  async function testSound(): Promise<void> {
+    setSoundMsg('Проверяю…');
+    try {
+      await window.api.testAlarm();
+      setSoundMsg('Открыл окно проверки. Если звука нет — нажмите внутри окна.');
+    } catch (e) {
+      setSoundMsg(`Ошибка: ${String(e)}`);
+    }
+    setTimeout(() => setSoundMsg(''), 6000);
+  }
 
   function set<K extends keyof Settings>(k: K, v: Settings[K]): void {
     setForm((f) => ({ ...f, [k]: v }));
@@ -78,9 +90,10 @@ export default function Settings({ state, onSaved }: Props) {
             <button className="btn ghost" onClick={() => void refresh()}>
               Обновить времена
             </button>
-            <button className="btn ghost" onClick={() => void window.api.testAlarm()}>
+            <button className="btn ghost" onClick={() => void testSound()}>
               Проверить звук
             </button>
+            {soundMsg && <span className="hint">{soundMsg}</span>}
             <button className="btn" onClick={() => void save()} disabled={saving}>
               {saving ? 'Сохраняю…' : 'Сохранить'}
             </button>
