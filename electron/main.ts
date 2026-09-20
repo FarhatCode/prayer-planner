@@ -452,10 +452,14 @@ if (!gotLock) {
   app.on('second-instance', (_e, argv) => {
     debug(`second-instance argv: ${JSON.stringify(argv)}`);
     try {
-      showMain();
       const cli = parseCliAlarm(argv);
       debug(`second-instance parseCliAlarm: ${cli ? 'ok ' + cli.entry?.title : 'null'}`);
-      if (cli) openAlarm(cli);
+      if (cli) {
+        // будильник: открыть только окно уведомления, главное окно не разворачивать
+        openAlarm(cli);
+        return;
+      }
+      showMain();
     } catch (e) {
       debug(`second-instance error: ${String(e)}`);
     }
