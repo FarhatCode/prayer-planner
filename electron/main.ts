@@ -331,11 +331,18 @@ function parseCliAlarm(argv: string[]): AlarmPayload | null {
   return null;
 }
 
+function applyAutoLaunch(enabled: boolean): void {
+  const exe = stablePackageExe();
+  if (!exe) return; // portable — автозапуск настраиваем только для установленной копии
+  app.setLoginItemSettings({ openAtLogin: enabled, path: exe });
+}
+
 function setupIpc(): void {
   ipcMain.handle('settings:get', () => storage.settings());
   ipcMain.handle('settings:set', (_e, patch: Partial<Settings>) => {
     const next = storage.setSettings(patch);
     storage.setPlan(todayStr(), null);
+    if ('autoLaunch' in patch) applyAutoLaunch(next.autoLaunch);
     return next;
   });
 
@@ -458,6 +465,7 @@ if (!gotLock) {
     Menu.setApplicationMenu(null);
     createTray();
     setupIpc();
+    applyAutoLaunch(storage.settings().autoLaunch);
     engine.start();
     refreshPrayersBestEffort();
     const cli = parseCliAlarm(process.argv);

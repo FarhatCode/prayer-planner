@@ -44,7 +44,8 @@ export const storage = {
       breakMin: Number(raw.breakMin ?? defaults.breakMin),
       volume: Number(raw.volume ?? defaults.volume),
       closeToTray: typeof raw.closeToTray === 'boolean' ? raw.closeToTray : defaults.closeToTray,
-      useTaskScheduler: typeof raw.useTaskScheduler === 'boolean' ? raw.useTaskScheduler : defaults.useTaskScheduler
+      useTaskScheduler: typeof raw.useTaskScheduler === 'boolean' ? raw.useTaskScheduler : defaults.useTaskScheduler,
+      autoLaunch: typeof raw.autoLaunch === 'boolean' ? raw.autoLaunch : defaults.autoLaunch
     };
   },
   setSettings(patch: Partial<Settings>): Settings {
@@ -58,7 +59,8 @@ export const storage = {
       breakMin: Number(patch.breakMin ?? base.breakMin),
       volume: Number(patch.volume ?? base.volume),
       closeToTray: typeof patch.closeToTray === 'boolean' ? patch.closeToTray : base.closeToTray,
-      useTaskScheduler: typeof patch.useTaskScheduler === 'boolean' ? patch.useTaskScheduler : base.useTaskScheduler
+      useTaskScheduler: typeof patch.useTaskScheduler === 'boolean' ? patch.useTaskScheduler : base.useTaskScheduler,
+      autoLaunch: typeof patch.autoLaunch === 'boolean' ? patch.autoLaunch : base.autoLaunch
     };
     writeJson('settings.json', next);
     return next;

@@ -78,6 +78,7 @@ export interface Settings {
   volume: number; // 0..1
   closeToTray: boolean;
   useTaskScheduler: boolean;
+  autoLaunch: boolean;
 }
 
 export interface Task {
@@ -183,7 +184,8 @@ export const DEFAULT_SETTINGS: Settings = {
   ],
   volume: 1,
   closeToTray: true,
-  useTaskScheduler: true
+  useTaskScheduler: true,
+  autoLaunch: true
 };
 
 export const DEFAULT_TASKS: Task[] = [

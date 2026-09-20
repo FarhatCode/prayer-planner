@@ -236,6 +236,14 @@ export default function Settings({ state, onSaved }: Props) {
             />
             При закрытии сворачивать в трей
           </label>
+          <label className="small">
+            <input
+              type="checkbox"
+              checked={form.autoLaunch}
+              onChange={(e) => set('autoLaunch', e.target.checked)}
+            />
+            Запускать при входе в Windows
+          </label>
         </div>
         <p className="hint" style={{ marginTop: 8 }}>
           Если Task Scheduler выключен — будильники срабатывают, только пока приложение запущено в трее.
