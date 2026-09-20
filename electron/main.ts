@@ -1,4 +1,6 @@
 import { app, BrowserWindow, ipcMain, Menu, nativeImage, screen, Tray } from 'electron';
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { AlarmPayload, DayPlan, PrayerFetchResult, RegisterResult, Settings, Task, UpdateState } from '../shared/types';
@@ -159,11 +161,56 @@ function createTray(): void {
   tray.on('double-click', () => showMain());
 }
 
+function stablePackageExe(): string | null {
+  try {
+    if (!app.isPackaged) return null;
+    const prog = process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'Programs') : '';
+    if (prog) {
+      for (const n of ['Мой День', 'Мой день', 'МойДень', 'Moy Den', 'MoyDen']) {
+        for (const e of [`${n}.exe`, `${n}.EXE`]) {
+          const c = path.join(prog, n, e);
+          try {
+            if (fs.existsSync(c)) return c;
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+    }
+    const stable = path.join(process.env.LOCALAPPDATA || '', 'MoyDen', 'alarm-launcher.exe');
+    try {
+      if (fs.existsSync(stable)) return stable;
+    } catch {
+      /* ignore */
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 function launchInfo(): LaunchInfo {
   if (app.isPackaged) {
-    return { exe: process.execPath, prefixArgs: [] };
+    const stable = stablePackageExe();
+    return { exe: stable ?? process.execPath, prefixArgs: [] };
   }
   return { exe: process.execPath, prefixArgs: [app.getAppPath()] };
+}
+
+let autoRegisteredFor = '';
+function autoRegisterToday(): void {
+  try {
+    if (!storage.settings().useTaskScheduler) return;
+    const plan = storage.todayPlan();
+    if (!plan) return;
+    const key = `${plan.date}:${process.execPath}`;
+    if (autoRegisteredFor === key) return;
+    autoRegisteredFor = key;
+    const r = registerDayTasks(plan, launchInfo());
+    console.log(`[авто] зарегистрировано задач на ${plan.date}: ${r.registered} (пропущено: ${r.skipped})`);
+  } catch (e) {
+    console.error('[авто] не удалось зарегистрировать будильники:', e);
+  }
 }
 
 function alarmAudioUrl(): string {
@@ -343,6 +390,25 @@ if (!gotLock) {
     const cli = parseCliAlarm(process.argv);
     if (cli) openAlarm(cli);
     else createMainWindow();
+
+    let lastAuto: string | null = null;
+    const autoRegister = (): void => {
+      try {
+        const s = storage.settings();
+        if (!s.useTaskScheduler) return;
+        const plan = storage.todayPlan();
+        if (!plan) return;
+        const key = `${plan.date}|${launchInfo().exe}`;
+        if (key === lastAuto) return;
+        lastAuto = key;
+        registerDayTasks(plan, launchInfo());
+        console.log(`[авто] задачи на ${plan.date} перерегистрированы (${launchInfo().exe})`);
+      } catch {
+        /* не критично */
+      }
+    };
+    autoRegister();
+    setInterval(autoRegister, 30_000);
   });
 
   app.on('window-all-closed', () => {
