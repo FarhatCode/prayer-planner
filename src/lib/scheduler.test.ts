@@ -151,4 +151,22 @@ describe('scheduler', () => {
     expect(plan.windows.length).toBe(DEFAULT_SETTINGS.windows.length);
     expect(plan.windows[0].name).toContain(BLOCK_LABELS.fajr);
   });
+
+  it('treats sleep past midnight as after-midnight: the Иша → Отбой window is usable', () => {
+    const settings = { ...DEFAULT_SETTINGS, sleep: '00:34' };
+    const plan = buildDayPlan({ settings, tasks: DEFAULT_TASKS_3, prayers: FX, date: '2026-09-18' });
+    const badWin = plan.warnings.find((w) => w.includes('Иша') && w.includes('непригодно'));
+    expect(badWin).toBeUndefined();
+    expect(plan.entries.find((e) => e.type === 'sleep')?.time).toBe('00:34');
+  });
+
+  it('places a pinned task inside the overnight Иша → Отбой window', () => {
+    const settings = { ...DEFAULT_SETTINGS, sleep: '00:34' };
+    const tasks: Task[] = [
+      { id: 'n1', name: 'Ночная', hours: 2, desc: '', color: '#f87171', canMove: false, pinnedWindow: DEFAULT_SETTINGS.windows.length - 1 }
+    ];
+    const plan = buildDayPlan({ settings, tasks, prayers: FX, date: '2026-09-18' });
+    expect(plan.warnings.some((w) => w.includes('Иша') && w.includes('непригодно'))).toBe(false);
+    expect(plan.entries.some((e) => e.type === 'study' && e.title.includes('Ночная'))).toBe(true);
+  });
 });

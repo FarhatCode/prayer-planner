@@ -16,7 +16,7 @@ declare global {
       registerAlarms(): Promise<RegisterResult>;
       listAlarms(): Promise<string[]>;
       testAlarm(): Promise<void>;
-      alarmUrl: string;
+      getAlarmUrl(): Promise<string>;
     };
   }
 }

@@ -16,6 +16,16 @@ app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
 const devServer = process.env.VITE_DEV_SERVER_URL || '';
 
+function debug(msg: string): void {
+  console.log(msg);
+  try {
+    const dir = os.tmpdir();
+    fs.appendFileSync(path.join(dir, 'moyden-debug.log'), `${new Date().toISOString()} ${msg}\n`, 'utf8');
+  } catch {
+    /* ignore */
+  }
+}
+
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let quitting = false;
@@ -116,10 +126,28 @@ function openAlarm(payload: AlarmPayload): void {
   } else {
     win.loadFile(rendererIndex(), { query: { route: 'alarm', payload: data } });
   }
-  win.once('ready-to-show', () => {
+  const showWin = (): void => {
     positionAlarm(win);
     win.show();
+    win.focus();
+  };
+  win.once('ready-to-show', () => {
+    debug(`alarm ready-to-show`);
+    showWin();
   });
+  win.webContents.on('did-finish-load', () => debug(`alarm did-finish-load loading=${win.webContents.isLoading()}`));
+  win.webContents.on('did-fail-load', (_e, code, desc) => debug(`alarm load failed: ${code} ${desc}`));
+  win.webContents.on('console-message', (_e, level, message) => debug(`alarm console[${level}]: ${String(message).slice(0, 200)}`));
+  win.webContents.on('render-process-gone', (_e, details) => debug(`alarm renderer gone: ${details.reason}`));
+  win.on('show', () => debug('alarm window shown'));
+  win.on('hide', () => debug('alarm window hidden'));
+  setTimeout(() => {
+    if (!win.isDestroyed() && !win.isVisible()) {
+      debug(`alarm force-show loading=${win.webContents.isLoading()}`);
+      showWin();
+    }
+  }, 2500);
+  debug(`openAlarm: ${JSON.stringify(payload.entry)}`);
   win.on('closed', () => alarmWindows.delete(win));
   alarmWindows.add(win);
 }
@@ -221,20 +249,26 @@ function launchInfo(): LaunchInfo {
   return { exe: process.execPath, prefixArgs: [app.getAppPath()] };
 }
 
-let autoRegisteredFor = '';
-function autoRegisterToday(): void {
-  try {
-    if (!storage.settings().useTaskScheduler) return;
-    const plan = storage.todayPlan();
-    if (!plan) return;
-    const key = `${plan.date}:${process.execPath}`;
-    if (autoRegisteredFor === key) return;
-    autoRegisteredFor = key;
-    const r = registerDayTasks(plan, launchInfo());
-    console.log(`[авто] зарегистрировано задач на ${plan.date}: ${r.registered} (пропущено: ${r.skipped})`);
-  } catch (e) {
-    console.error('[авто] не удалось зарегистрировать будильники:', e);
+async function ensureTodayPlan(): Promise<DayPlan | null> {
+  const existing = storage.todayPlan();
+  if (existing) return existing;
+  const settings = storage.settings();
+  let cache = storage.prayerCache();
+  if (!cache || cache.date !== todayStr()) {
+    try {
+      const res = await fetchPrayerTimes(settings.cityId, prayerCacheStore, undefined, 5000);
+      if (res.ok && !res.offline) lastNet = { cityId: settings.cityId, date: res.sourceDate };
+    } catch {
+      /* offline — строим план по старому кэшу */
+    }
+    cache = storage.prayerCache();
   }
+  if (!cache) return null;
+  const plan = buildDayPlan({ settings, tasks: storage.tasks(), prayers: cache, date: todayStr() });
+  plan.fromCache = cache.date !== todayStr();
+  plan.sourceDate = cache.date;
+  storage.setPlan(plan.date, plan);
+  return plan;
 }
 
 function alarmAudioUrl(): string {
@@ -284,18 +318,26 @@ async function refreshPrayersBestEffort(): Promise<void> {
 function parseCliAlarm(argv: string[]): AlarmPayload | null {
   const idx = argv.indexOf('--alarm');
   if (idx === -1 || idx + 1 >= argv.length) return null;
-  try {
-    const payload = JSON.parse(Buffer.from(argv[idx + 1], 'base64url').toString('utf8')) as AlarmPayload;
-    if (payload && payload.entry && payload.entry.time) return payload;
-  } catch {
-    return null;
+  for (let i = idx + 1; i < argv.length; i++) {
+    const cand = argv[i];
+    if (cand.startsWith('-')) continue;
+    try {
+      const payload = JSON.parse(Buffer.from(cand, 'base64url').toString('utf8')) as AlarmPayload;
+      if (payload && payload.entry && payload.entry.time) return payload;
+    } catch {
+      /* not a payload token — keep scanning */
+    }
   }
   return null;
 }
 
 function setupIpc(): void {
   ipcMain.handle('settings:get', () => storage.settings());
-  ipcMain.handle('settings:set', (_e, patch: Partial<Settings>) => storage.setSettings(patch));
+  ipcMain.handle('settings:set', (_e, patch: Partial<Settings>) => {
+    const next = storage.setSettings(patch);
+    storage.setPlan(todayStr(), null);
+    return next;
+  });
 
   ipcMain.handle('tasks:get', () => storage.tasks());
   ipcMain.handle('tasks:set', (_e, tasks: Task[]) => {
@@ -396,13 +438,20 @@ const engine = new AlarmEngine({
 });
 
 const gotLock = app.requestSingleInstanceLock();
+debug(`single-instance lock: ${gotLock}`);
 if (!gotLock) {
   app.quit();
 } else {
   app.on('second-instance', (_e, argv) => {
-    showMain();
-    const cli = parseCliAlarm(argv);
-    if (cli) openAlarm(cli);
+    debug(`second-instance argv: ${JSON.stringify(argv)}`);
+    try {
+      showMain();
+      const cli = parseCliAlarm(argv);
+      debug(`second-instance parseCliAlarm: ${cli ? 'ok ' + cli.entry?.title : 'null'}`);
+      if (cli) openAlarm(cli);
+    } catch (e) {
+      debug(`second-instance error: ${String(e)}`);
+    }
   });
 
   app.whenReady().then(() => {
@@ -412,27 +461,32 @@ if (!gotLock) {
     engine.start();
     refreshPrayersBestEffort();
     const cli = parseCliAlarm(process.argv);
+    debug(`whenReady parseCliAlarm(process.argv): ${cli ? 'ok ' + cli.entry?.title : 'null'} argv=${JSON.stringify(process.argv)}`);
     if (cli) openAlarm(cli);
     else createMainWindow();
 
     let lastAuto: string | null = null;
-    const autoRegister = (): void => {
+    const autoRegister = async (): Promise<void> => {
       try {
         const s = storage.settings();
         if (!s.useTaskScheduler) return;
-        const plan = storage.todayPlan();
+        let plan = storage.todayPlan();
+        if (!plan) plan = await ensureTodayPlan();
         if (!plan) return;
-        const key = `${plan.date}|${launchInfo().exe}`;
+        const sig = plan.entries.map((e) => `${e.time}|${e.type}|${e.title}`).join('~');
+        const key = `${plan.date}|${launchInfo().exe}|${sig}`;
         if (key === lastAuto) return;
         lastAuto = key;
-        registerDayTasks(plan, launchInfo());
-        console.log(`[авто] задачи на ${plan.date} перерегистрированы (${launchInfo().exe})`);
-      } catch {
-        /* не критично */
+        const r = registerDayTasks(plan, launchInfo());
+        console.log(`[авто] задачи на ${plan.date} зарегистрированы: ${r.registered} (exe: ${launchInfo().exe})`);
+      } catch (e) {
+        console.error('[авто] не удалось зарегистрировать будильники:', e);
       }
     };
-    autoRegister();
-    setInterval(autoRegister, 30_000);
+    void autoRegister();
+    setInterval(() => {
+      void autoRegister();
+    }, 30_000);
   });
 
   app.on('window-all-closed', () => {

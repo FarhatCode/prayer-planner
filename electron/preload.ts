@@ -14,7 +14,7 @@ const api = {
   registerAlarms: () => ipcRenderer.invoke('alarms:register'),
   listAlarms: () => ipcRenderer.invoke('alarms:list'),
   testAlarm: () => ipcRenderer.invoke('alarm:test'),
-  alarmUrl: ipcRenderer.sendSync('alarm:url') as string
+  getAlarmUrl: () => ipcRenderer.invoke('alarm:url')
 };
 
 export type ApiType = typeof api;

@@ -8,16 +8,7 @@ export default function AlarmPopup({ payload }: { payload: unknown }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
-    const url = window.api?.alarmUrl ?? '';
-    const audio = url ? new Audio(url) : null;
-    if (audio) {
-      audio.loop = true;
-      audio.volume = Math.max(0, Math.min(1, p?.volume ?? 1));
-      audioRef.current = audio;
-      void audio.play().catch(() => {
-        /* autoplay blocked — запустим по клику */
-      });
-    }
+    let disposed = false;
     const startAudio = () => {
       const a = audioRef.current;
       if (a && a.paused) void a.play().catch(() => undefined);
@@ -27,12 +18,25 @@ export default function AlarmPopup({ payload }: { payload: unknown }) {
     };
     window.addEventListener('pointerdown', startAudio);
     window.addEventListener('keydown', onKey);
+    void (async () => {
+      const url = (await window.api?.getAlarmUrl?.()) ?? '';
+      if (disposed || !url) return;
+      const audio = new Audio(url);
+      audio.loop = true;
+      audio.volume = Math.max(0, Math.min(1, p?.volume ?? 1));
+      audioRef.current = audio;
+      void audio.play().catch(() => {
+        /* autoplay blocked — запустим по клику */
+      });
+    })();
     return () => {
+      disposed = true;
       window.removeEventListener('pointerdown', startAudio);
       window.removeEventListener('keydown', onKey);
-      if (audio) {
-        audio.pause();
-        audio.src = '';
+      const a = audioRef.current;
+      if (a) {
+        a.pause();
+        a.src = '';
       }
     };
   }, []);

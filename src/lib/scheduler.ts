@@ -392,16 +392,17 @@ function sameCalendarDay(a: string, b: string): boolean {
 }
 
 function anchorsOf(settings: Settings, prayers: PrayerCache): Record<AnchorKey, number> {
-  const a: Record<AnchorKey, number> = {
-    wake: parseHHMM(settings.wake),
+  const wake = parseHHMM(settings.wake);
+  const sleep = parseHHMM(settings.sleep);
+  return {
+    wake,
     fajr: parseHHMM(prayers.praytimes.bamdat),
     dhuhr: parseHHMM(prayers.praytimes.besin),
     asr: parseHHMM(prayers.praytimes.ekindi),
     maghrib: parseHHMM(prayers.praytimes.aqsham),
     isha: parseHHMM(prayers.praytimes.quptan),
-    sleep: settings.sleep === '00:00' ? 1440 : parseHHMM(settings.sleep)
+    sleep: sleep < wake ? sleep + 1440 : sleep
   };
-  return a;
 }
 
 function prepareTask(task: Task, slotMin: number, winCount: number): PreparedTask {

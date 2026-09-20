@@ -70,9 +70,29 @@ export interface LaunchInfo {
   prefixArgs: string[];
 }
 
-export function registerDayTasks(plan: DayPlan, launch: LaunchInfo, now = new Date()): RegisterResult {
-  clearTasks();
+function existingTaskFingerprints(): Map<string, string> {
+  const map = new Map<string, string>();
+  const script =
+    `Get-ScheduledTask | Where-Object { $_.TaskName -like 'MoyDen-*' } | ForEach-Object { ` +
+    `  $a = $_.Actions | Select-Object -First 1; ` +
+    `  $i = $_ | Get-ScheduledTaskInfo; ` +
+    `  $w = if ($i.NextRunTime) { $i.NextRunTime.ToString('yyyy-MM-dd HH:mm') } else { '' }; ` +
+    `  Write-Output ($_.TaskName + [string][char]1 + $a.Execute + [string][char]1 + $a.Arguments + [string][char]1 + $w) }`;
+  const r = ps(script);
+  for (const line of r.out.split(/\r?\n/)) {
+    const parts = line.split('\x01');
+    if (parts.length >= 4 && parts[0].trim()) {
+      map.set(parts[0].trim(), normPath(`${parts[2]}\x01${parts[3]}`));
+    }
+  }
+  return map;
+}
 
+function normPath(p: string): string {
+  return p.replace(/\\/g, '/');
+}
+
+export function registerDayTasks(plan: DayPlan, launch: LaunchInfo, now = new Date()): RegisterResult {
   const items: Array<{ name: string; when: string; arg: string }> = [];
   let skipped = 0;
   for (const e of plan.entries) {
@@ -91,14 +111,25 @@ export function registerDayTasks(plan: DayPlan, launch: LaunchInfo, now = new Da
     items.push({ name: `${ALARM_PREFIX}${whenStr(when).replace(/[-: ]/g, '')}`, when: whenStr(when), arg })
   }
 
+  const existing = existingTaskFingerprints();
+
   if (items.length === 0) {
+    clearTasks();
     return { mode: 'scheduler', registered: 0, skipped, taskNames: [] };
+  }
+
+  // keep/create only tasks that changed; cull the rest
+  const plannedNames = new Set(items.map((it) => it.name));
+  const change: Array<{ name: string; when: string; arg: string }> = [];
+  for (const it of items) {
+    const want = normPath(`${it.arg}\x01${it.when}`);
+    if (existing.get(it.name) !== want) change.push(it);
   }
 
   const scriptPath = path.join(os.tmpdir(), `moyden-alarms-${Date.now()}.ps1`);
   const lines: string[] = [
     `$items = @(`,
-    ...items.map((it) => `  @{ Name = ${sq(it.name)}; When = ${sq(it.when)}; Arg = ${sq(it.arg)} }`),
+    ...change.map((it) => `  @{ Name = ${sq(it.name)}; When = ${sq(it.when)}; Arg = ${sq(it.arg)} }`),
     `)`,
     `$exe = ${sq(launch.exe)}`,
     `foreach ($it in $items) {`,
@@ -112,10 +143,17 @@ export function registerDayTasks(plan: DayPlan, launch: LaunchInfo, now = new Da
     `  } catch {`,
     `    Write-Output ('FAIL ' + $it.Name + ' ' + $_.Exception.Message)`,
     `  }`,
-    `}`
+    `}`,
   ];
+
+  // cull leftover tasks (registered but not in the current plan)
+  const leftovers = [...existing.keys()].filter((name) => !plannedNames.has(name));
+  for (const name of leftovers) {
+    lines.push(`Unregister-ScheduledTask -TaskName ${sq(name)} -Confirm:$false -ErrorAction SilentlyContinue`);
+  }
+
   try {
-    fs.writeFileSync(scriptPath, lines.join('\n'), 'utf8');
+    fs.writeFileSync(scriptPath, '\uFEFF' + lines.join('\n'), 'utf8');
     const res = psFile(scriptPath);
     const okCount = (res.out.match(/^OK /gm) ?? []).length;
     return {
