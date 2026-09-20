@@ -230,9 +230,14 @@ export function buildDayPlan(input: BuildInput): DayPlan {
     // prayer at the start anchor of the window
     const pk = anchorPrayerKey(w.from);
     if (pk) {
+      let endMin = win.b;
+      if (pk === 'bamdat' && typeof prayers.praytimes.kun === 'string' && prayers.praytimes.kun.length > 0) {
+        // Фаджр длится только до восхода, а не до следующего намаза
+        endMin = parseHHMM(prayers.praytimes.kun);
+      }
       entries.push({
         time: toHHMM(win.a),
-        end: toHHMM(win.b),
+        end: toHHMM(endMin),
         type: 'prayer',
         title: SHORT_LABELS[w.from] ?? BLOCK_LABELS[w.from],
         text: `${SHORT_LABELS[w.from] ?? BLOCK_LABELS[w.from]} · ${toHHMM(win.a)}`,
