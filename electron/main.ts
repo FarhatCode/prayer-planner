@@ -164,24 +164,48 @@ function createTray(): void {
 function stablePackageExe(): string | null {
   try {
     if (!app.isPackaged) return null;
-    const prog = process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'Programs') : '';
-    if (prog) {
-      for (const n of ['Мой День', 'Мой день', 'МойДень', 'Moy Den', 'MoyDen']) {
-        for (const e of [`${n}.exe`, `${n}.EXE`]) {
-          const c = path.join(prog, n, e);
-          try {
-            if (fs.existsSync(c)) return c;
-          } catch {
-            /* ignore */
-          }
+    if (app.isPackaged && process.env.PORTABLE_EXECUTABLE_DIR) {
+      const pex = process.env.PORTABLE_EXECUTABLE_DIR;
+      try {
+        if (fs.statSync(process.execPath).size === fs.statSync(path.join(pex, path.basename(process.execPath))).size) {
+          /* portable: сам себя не считаем стабильным */
         }
+      } catch {
+        /* ignore */
       }
     }
-    const stable = path.join(process.env.LOCALAPPDATA || '', 'MoyDen', 'alarm-launcher.exe');
-    try {
-      if (fs.existsSync(stable)) return stable;
-    } catch {
-      /* ignore */
+    const prog = process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'Programs') : '';
+    const size = (() => {
+      try {
+        return fs.statSync(process.execPath).size;
+      } catch {
+        return -1;
+      }
+    })();
+    if (prog && size > 0) {
+      try {
+        const dirs = fs.readdirSync(prog);
+        for (const d of dirs) {
+          const dir = path.join(prog, d);
+          let names: string[] = [];
+          try {
+            names = fs.readdirSync(dir).filter((f) => /\.exe$/i.test(f));
+          } catch {
+            /* skip */
+          }
+          for (const f of names) {
+            try {
+              if (fs.statSync(path.join(dir, f)).size === size) {
+                return path.join(dir, f);
+              }
+            } catch {
+              /* skip */
+            }
+          }
+        }
+      } catch {
+        /* ignore */
+      }
     }
   } catch {
     return null;
