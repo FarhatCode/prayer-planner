@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import type { DayPlan, PEntry, RegisterResult, UpdateState } from '../../shared/types';
-import { formatDateRu, nowHHMM, parseHHMM } from '../lib/fmt';
+import type { DayPlan, PEntry, Qaylulah, RegisterResult, UpdateState } from '../../shared/types';
+import { formatDateRu, nowHHMM, parseHHMM, toHHMM } from '../lib/fmt';
+import { qayluAllowedStarts, qayluAutoStart, qayluRangesLabel } from '../lib/qaylulah';
 
 interface Props {
   state: UpdateState;
@@ -20,7 +21,8 @@ const DOT: Record<string, string> = {
   break: '#f5a623',
   rest: '#64748b',
   prep: '#a78bfa',
-  sleep: '#334155'
+  sleep: '#334155',
+  qaylulah: '#f59e0b'
 };
 
 function group(entries: PEntry[]): Section[] {
@@ -40,12 +42,118 @@ function group(entries: PEntry[]): Section[] {
     } else if (e.type === 'prayer') {
       open(`${e.title} · ${e.time}`);
       cur!.entries.push(e);
+    } else if (e.type === 'qaylulah') {
+      open(`${e.title} · ${e.time}`);
+      cur!.entries.push(e);
     } else {
       if (!cur) open('День');
       cur!.entries.push(e);
     }
   }
   return out;
+}
+
+function QaylulahControl({
+  state,
+  onChanged
+}: {
+  state: UpdateState;
+  onChanged: () => Promise<void>;
+}) {
+  const [q, setQ] = useState<Qaylulah>(() => ({ ...state.settings.qaylulah }));
+  useEffect(() => {
+    setQ((cur) => (cur.enabled === state.settings.qaylulah.enabled ? cur : { ...cur, ...state.settings.qaylulah }));
+  }, [state.settings.qaylulah]);
+
+  const pt = state.prayer?.prayers ?? null;
+  const starts = qayluAllowedStarts(q.minutes, pt);
+  const curStart = ((): number => {
+    if (q.start && q.start.trim().length > 0) return parseHHMM(q.start);
+    return qayluAutoStart(q.minutes, pt) ?? 0;
+  })();
+  const curIdx = starts
+    ? Math.max(0, Math.min(starts.length - 1, starts.indexOf(curStart) >= 0 ? starts.indexOf(curStart) : 0))
+    : 0;
+
+  async function update(next: Qaylulah): Promise<void> {
+    setQ(next);
+    try {
+      await window.api.setSettings({ qaylulah: next });
+    } catch {
+      /* настройки всё равно сохраняются в main */
+    }
+    await onChanged();
+  }
+
+  function changeMinutes(minutes: number): void {
+    const nextStarts = qayluAllowedStarts(minutes, pt);
+    let start = q.start;
+    if (!q.start || q.start.trim().length === 0) {
+      start = qayluAutoStart(minutes, pt) !== null ? toHHMM(qayluAutoStart(minutes, pt)!) : '';
+    } else {
+      const cur = parseHHMM(q.start);
+      if (!nextStarts || nextStarts.length === 0) start = '';
+      else if (nextStarts.indexOf(cur) >= 0) start = q.start;
+      else start = toHHMM(nextStarts.reduce((best, s) => (Math.abs(s - cur) < Math.abs(best - cur) ? s : best), nextStarts[0]));
+    }
+    void update({ ...q, minutes, start });
+  }
+
+  return (
+    <div className="panel">
+      <div className="row" style={{ justifyContent: 'space-between' }}>
+        <div>
+          <h2 style={{ marginBottom: 4 }}>Къайлюля (полуденный отдых)</h2>
+          <p className="sub" style={{ margin: 0 }}>
+            От ~часа до Зухра и до Магриба, только не поверх намазов. Учеба автоматически обходит блок, будильники
+            пересчитываются.
+          </p>
+        </div>
+        <label className="small">
+          <input type="checkbox" checked={q.enabled} onChange={(e) => void update({ ...q, enabled: e.target.checked })} /> На день
+        </label>
+      </div>
+      {q.enabled && (
+        <>
+          <div className="row" style={{ gap: 26, marginTop: 10, flexWrap: 'wrap' }}>
+            <label className="small">Длительность</label>
+            <select value={q.minutes} onChange={(e) => changeMinutes(Number(e.target.value))}>
+              {[40, 45, 50, 55, 60].map((m) => (
+                <option key={m} value={m}>
+                  {m} мин
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="row" style={{ gap: 22, marginTop: 8, flexWrap: 'wrap' }}>
+            {starts && starts.length > 0 ? (
+              <div style={{ flex: 1, minWidth: 280 }}>
+                <div className="sub" style={{ margin: 0 }}>
+                  Начало <b>{toHHMM(starts[curIdx])}</b> — до <b>{toHHMM(starts[curIdx] + q.minutes)}</b>
+                </div>
+                <input
+                  type="range"
+                  className="slider"
+                  min={0}
+                  max={starts.length - 1}
+                  step={1}
+                  value={curIdx}
+                  onChange={(e) => void update({ ...q, start: toHHMM(starts[Number(e.target.value)]) })}
+                />
+                <div className="hint" style={{ marginTop: 4 }}>
+                  Перетаскивайте в пределах: {qayluRangesLabel(q.minutes, pt)}
+                </div>
+              </div>
+            ) : (
+              <span className="hint">
+                На {q.minutes} мин сейчас нет места между намазами — возьмите меньше.
+              </span>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
 }
 
 function EntryRow({ e }: { e: PEntry }) {
@@ -187,6 +295,8 @@ export default function Schedule({ state, setBusy }: Props) {
           </div>
         </div>
       </div>
+
+      <QaylulahControl state={state} onChanged={async () => build(false)} />
 
       {reg && (
         <div className="panel">

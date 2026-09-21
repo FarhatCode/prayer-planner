@@ -67,6 +67,12 @@ export interface FixedWindow {
   restLabel: string;
 }
 
+export interface Qaylulah {
+  enabled: boolean;
+  minutes: number; // 40..60
+  start: string; // "HH:MM" — время начала; если пусто — автоматически сразу после Зухра
+}
+
 export interface Settings {
   cityId: number;
   cityName: string;
@@ -79,6 +85,7 @@ export interface Settings {
   closeToTray: boolean;
   useTaskScheduler: boolean;
   autoLaunch: boolean;
+  qaylulah: Qaylulah;
 }
 
 export interface Task {
@@ -91,7 +98,7 @@ export interface Task {
   canMove: boolean;
 }
 
-export type PEntryType = 'wake' | 'prayer' | 'study' | 'break' | 'rest' | 'prep' | 'sleep';
+export type PEntryType = 'wake' | 'prayer' | 'study' | 'break' | 'rest' | 'prep' | 'sleep' | 'qaylulah';
 
 export interface PEntry {
   time: string; // "HH:MM"
@@ -185,7 +192,8 @@ export const DEFAULT_SETTINGS: Settings = {
   volume: 1,
   closeToTray: true,
   useTaskScheduler: true,
-  autoLaunch: true
+  autoLaunch: true,
+  qaylulah: { enabled: false, minutes: 45, start: '' }
 };
 
 export const DEFAULT_TASKS: Task[] = [

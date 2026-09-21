@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import type { PrayerFetchResult, Settings, UpdateState } from '../../shared/types';
+import type { PrayerFetchResult, Qaylulah, Settings, UpdateState } from '../../shared/types';
 import { SHORT_LABELS } from '../../shared/types';
 import CityPicker from '../components/CityPicker';
+import { qayluStartValid, qayluRangesLabel, qayluClampMinutes } from '../lib/qaylulah';
 
 interface Props {
   state: UpdateState;
@@ -64,6 +65,15 @@ export default function Settings({ state, onSaved }: Props) {
     setSaving(true);
     setMsg('');
     try {
+      const q = form.qaylulah;
+      if (q.enabled) {
+        const pt = preview?.prayers ?? state.prayer?.prayers ?? null;
+        const v = qayluStartValid(q.start, q.minutes, pt);
+        if (!v.ok) {
+          setMsg(`Къайлюля: ${v.error}`);
+          return;
+        }
+      }
       const next: Settings = {
         ...form,
         cityId: Number(form.cityId) || 0,
@@ -71,7 +81,8 @@ export default function Settings({ state, onSaved }: Props) {
         breakMin: Math.min(15, Math.max(0, Number(form.breakMin) || 15)),
         wake: form.wake || '04:30',
         sleep: form.sleep || '00:00',
-        volume: Math.max(0, Math.min(1, Number(form.volume) || 1))
+        volume: Math.max(0, Math.min(1, Number(form.volume) || 1)),
+        qaylulah: { ...q, minutes: qayluClampMinutes(q.minutes), enabled: q.enabled }
       };
       await window.api.setSettings(next);
       setForm(next);
@@ -82,6 +93,10 @@ export default function Settings({ state, onSaved }: Props) {
     } finally {
       setSaving(false);
     }
+  }
+
+  function setQaylulah(patch: Partial<Qaylulah>): void {
+    setForm((f) => ({ ...f, qaylulah: { ...f.qaylulah, ...patch } }));
   }
 
   return (
@@ -215,6 +230,52 @@ export default function Settings({ state, onSaved }: Props) {
             />
           </div>
         ))}
+      </div>
+
+      <div className="panel">
+        <h2>Къайлюля (полуденный отдых)</h2>
+        <p className="sub">
+          Сунна полуденного сна/отдыха. Разрешённое место — от ~часа до Зухра и до Магриба (утро не подходит), блок
+          никогда не встаёт поверх намаза. Допустимые диапазоны начала (ЧЧ:ММ):
+        </p>
+        <div className="row" style={{ gap: 22, flexWrap: 'wrap' }}>
+          <label className="small">
+            <input
+              type="checkbox"
+              checked={form.qaylulah.enabled}
+              onChange={(e) => setQaylulah({ enabled: e.target.checked })}
+            />
+            Включить къайлюлю
+          </label>
+          <label className="small">
+            Длительность
+            <select value={form.qaylulah.minutes} onChange={(e) => setQaylulah({ minutes: Number(e.target.value) })}>
+              {[40, 45, 50, 55, 60].map((m) => (
+                <option key={m} value={m}>
+                  {m} мин
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        {form.qaylulah.enabled && (
+          <>
+            <div className="settingsgrid" style={{ marginTop: 8 }}>
+              <div className="field">
+                <label>Начало (ЧЧ:ММ; пусто = сразу после Зухра)</label>
+                <input
+                  type="text"
+                  placeholder={'Например 12:00'}
+                  value={form.qaylulah.start}
+                  onChange={(e) => setQaylulah({ start: e.target.value })}
+                />
+              </div>
+            </div>
+            <p className="hint" style={{ marginTop: 8 }}>
+              Можно ставить только: {qayluRangesLabel(form.qaylulah.minutes, preview?.prayers ?? state.prayer?.prayers ?? null) ?? 'нет времён намазов — обновите намазы'}
+            </p>
+          </>
+        )}
       </div>
 
       <div className="panel">

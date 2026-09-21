@@ -96,6 +96,7 @@ export function registerDayTasks(plan: DayPlan, launch: LaunchInfo, now = new Da
   const items: Array<{ name: string; when: string; arg: string }> = [];
   let skipped = 0;
   for (const e of plan.entries) {
+    if (e.type === 'qaylulah') continue; // отдых — без будильника
     const when = parsePlanWhen(plan.date, e.time);
     if (!when) {
       skipped++;

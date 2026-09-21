@@ -169,4 +169,41 @@ describe('scheduler', () => {
     expect(plan.warnings.some((w) => w.includes('Иша') && w.includes('непригодно'))).toBe(false);
     expect(plan.entries.some((e) => e.type === 'study' && e.title.includes('Ночная'))).toBe(true);
   });
+
+  it('qaylulah disabled by default: no qaylulah entry', () => {
+    const plan = buildDayPlan({ settings: DEFAULT_SETTINGS, tasks: DEFAULT_TASKS_3, prayers: FX });
+    expect(plan.entries.some((e) => e.type === 'qaylulah')).toBe(false);
+  });
+
+  it('qaylulah auto-places right after zuhr and study avoids the block', () => {
+    const settings = { ...DEFAULT_SETTINGS, qaylulah: { enabled: true, minutes: 45, start: '' } };
+    const plan = buildDayPlan({ settings, tasks: DEFAULT_TASKS_3, prayers: FX });
+    const q = plan.entries.find((e) => e.type === 'qaylulah');
+    expect(q).toBeDefined();
+    expect(q!.time).toBe('12:00');
+    expect(q!.end).toBe('12:45');
+    expect(plan.warnings.some((w) => w.includes('Къайлюля не добавлена'))).toBe(false);
+    const qs = parseHHMM('12:00');
+    const qe = parseHHMM('12:45');
+    for (const e of plan.entries) {
+      if (e.type !== 'study') continue;
+      const s = parseHHMM(e.time);
+      expect(s < qs || s >= qe).toBe(true);
+    }
+  });
+
+  it('qaylulah allowed before zuhr (>= час до Зухра, утро нет)', () => {
+    const settings = { ...DEFAULT_SETTINGS, qaylulah: { enabled: true, minutes: 45, start: '11:00' } };
+    const plan = buildDayPlan({ settings, tasks: DEFAULT_TASKS_3, prayers: FX });
+    const q = plan.entries.find((e) => e.type === 'qaylulah');
+    expect(q?.time).toBe('11:00');
+    expect(q?.end).toBe('11:45');
+  });
+
+  it('qaylulah over a prayer is rejected with a warning', () => {
+    const settings = { ...DEFAULT_SETTINGS, qaylulah: { enabled: true, minutes: 60, start: '16:00' } };
+    const plan = buildDayPlan({ settings, tasks: DEFAULT_TASKS_3, prayers: FX });
+    expect(plan.entries.some((e) => e.type === 'qaylulah')).toBe(false);
+    expect(plan.warnings.some((w) => w.includes('Къайлюля не добавлена'))).toBe(true);
+  });
 });

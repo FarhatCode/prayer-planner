@@ -276,6 +276,20 @@ function alarmAudioUrl(): string {
   return pathToFileURL(path.join(process.resourcesPath, 'alarm.mp3')).href;
 }
 
+async function rebuildAndRegisterAlarms(s: Settings): Promise<void> {
+  try {
+    if (!s.useTaskScheduler) return;
+    const cache = storage.prayerCache();
+    if (!cache) return;
+    const plan = buildDayPlan({ settings: s, tasks: storage.tasks(), prayers: cache, date: todayStr() });
+    storage.setPlan(plan.date, plan);
+    const r = registerDayTasks(plan, launchInfo());
+    console.log(`[къайлюля] план пересобран, будильники: ${r.registered}`);
+  } catch (e) {
+    console.error('[къайлюля] не удалось пересобрать будильники:', e);
+  }
+}
+
 function lookupPrayer(cityId: number): PrayerFetchResult {
   const c = storage.prayerCache();
   if (c && c.cityId === cityId) {
@@ -343,6 +357,7 @@ function setupIpc(): void {
     const next = storage.setSettings(patch);
     storage.setPlan(todayStr(), null);
     if ('autoLaunch' in patch) applyAutoLaunch(next.autoLaunch);
+    if ('qaylulah' in patch) void rebuildAndRegisterAlarms(next);
     return next;
   });
 

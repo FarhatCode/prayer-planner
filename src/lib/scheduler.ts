@@ -10,6 +10,7 @@ import type {
 import { SHORT_LABELS } from '../../shared/types';
 import { parseHHMM, toHHMM, todayStr } from './fmt';
 import { anchorPrayerKey } from './prayerTimes';
+import { qayluAutoStart, qayluClampMinutes, qayluStartValid } from './qaylulah';
 
 export const BLOCK_LABELS: Record<AnchorKey, string> = {
   wake: 'Подъем',
@@ -52,17 +53,38 @@ export function buildDayPlan(input: BuildInput): DayPlan {
   const slotMin = Math.max(1, settings.slotMin);
   const breakMin = Math.max(0, Math.min(15, settings.breakMin));
 
+  const warnings: string[] = [];
+
+  // Къайлюля (полуденный отдых): от ~часа до Зухра и до Магриба, никогда поверх намазов
+  const q = settings.qaylulah;
+  let qSpan: { s: number; e: number } | null = null;
+  if (q && q.enabled) {
+    const qMin = qayluClampMinutes(q.minutes);
+    const auto = qayluAutoStart(qMin, prayers.praytimes);
+    const start = q.start && q.start.trim().length > 0 ? q.start : auto !== null ? toHHMM(auto) : '';
+    const v = qayluStartValid(start, qMin, prayers.praytimes);
+    if (v.ok && start) {
+      const s = parseHHMM(start);
+      qSpan = { s, e: s + qMin };
+    } else if (start) {
+      warnings.push(`Къайлюля не добавлена: ${v.error}`);
+    }
+  }
+
   const windows = settings.windows;
   const W = windows.map((w) => {
     const a = anchors[w.from];
     const b = anchors[w.to];
     const workA = a + w.startPadMin;
     const workB = b - w.endPadMin;
-    return { w, a, b, workA, workB, work: workB - workA };
+    const segs = qSpan
+      ? subtractSegments([[workA, workB]] as Array<[number, number]>, qSpan.s, qSpan.e)
+      : ([[workA, workB]] as Array<[number, number]>);
+    const work = segs.reduce((sum, [x, y]) => sum + (y - x), 0);
+    return { w, a, b, workA, workB, segs, work };
   });
 
   const usable: number[] = [];
-  const warnings: string[] = [];
   W.forEach((win, idx) => {
     if (win.work > 0) usable.push(idx);
   });
@@ -246,7 +268,26 @@ export function buildDayPlan(input: BuildInput): DayPlan {
     }
 
     if (b <= 0) continue;
-    let cursor = win.workA;
+    const segs = win.segs;
+    let si = 0;
+    let cursor = segs[0][0];
+    const place = (len: number): [number, number] | null => {
+      for (;;) {
+        const se = segs[si][1];
+        if (cursor + len <= se) {
+          const r: [number, number] = [cursor, cursor + len];
+          cursor += len;
+          return r;
+        }
+        if (si + 1 < segs.length) {
+          si++;
+          cursor = segs[si][0];
+          continue;
+        }
+        return null;
+      }
+    };
+    let droppedSlots = 0;
 
     // flatten (task, slot) in assignment order
     const flat: Array<{ t: PreparedTask; i: number; dur: number }> = [];
@@ -256,9 +297,14 @@ export function buildDayPlan(input: BuildInput): DayPlan {
 
     for (let i = 0; i < flat.length; i++) {
       const item = flat[i];
+      const r = place(item.dur);
+      if (!r) {
+        droppedSlots++;
+        continue;
+      }
       entries.push({
-        time: toHHMM(cursor),
-        end: toHHMM(cursor + item.dur),
+        time: toHHMM(r[0]),
+        end: toHHMM(r[1]),
         type: 'study',
         taskId: item.t.task.id,
         title:
@@ -266,41 +312,69 @@ export function buildDayPlan(input: BuildInput): DayPlan {
         text: item.t.task.desc || `${item.t.task.name} — занятие`,
         desc: ''
       });
-      cursor += item.dur;
       if (i < flat.length - 1) {
-        entries.push({
-          time: toHHMM(cursor),
-          end: toHHMM(cursor + b),
-          type: 'break',
-          title: `Перерыв ${b} мин`,
-          text: '',
-          desc: ''
-        });
-        cursor += b;
+        const rb = place(b);
+        if (rb) {
+          entries.push({
+            time: toHHMM(rb[0]),
+            end: toHHMM(rb[1]),
+            type: 'break',
+            title: `Перерыв ${b} мин`,
+            text: '',
+            desc: ''
+          });
+        }
       }
     }
 
-    const leftover = win.workB - cursor;
-    if (leftover > 0) {
-      entries.push({
-        time: toHHMM(cursor),
-        end: toHHMM(win.workB),
-        type: 'rest',
-        title: w.restLabel,
-        text: w.restLabel,
-        desc: ''
-      });
+    for (let k = si; k < segs.length; k++) {
+      const restFrom = Math.max(cursor, segs[k][0]);
+      const restTo = segs[k][1];
+      if (restFrom < restTo) {
+        entries.push({
+          time: toHHMM(restFrom),
+          end: toHHMM(restTo),
+          type: 'rest',
+          title: w.restLabel,
+          text: w.restLabel,
+          desc: ''
+        });
+      }
     }
     if (w.endPadMin > 0) {
-      entries.push({
-        time: toHHMM(win.workB),
-        end: toHHMM(win.b),
-        type: 'prep',
-        title: `Подготовка к ${SHORT_LABELS[w.to] ?? BLOCK_LABELS[w.to]}`,
-        text: `Приготовления к ${SHORT_LABELS[w.to] ?? BLOCK_LABELS[w.to]}`,
-        desc: ''
-      });
+      let pStart = win.workB;
+      if (qSpan && qSpan.e > win.workB && qSpan.e < win.b) pStart = qSpan.e;
+      const pEnd = win.b;
+      if (pStart < pEnd) {
+        entries.push({
+          time: toHHMM(pStart),
+          end: toHHMM(pEnd),
+          type: 'prep',
+          title: `Подготовка к ${SHORT_LABELS[w.to] ?? BLOCK_LABELS[w.to]}`,
+          text: `Приготовления к ${SHORT_LABELS[w.to] ?? BLOCK_LABELS[w.to]}`,
+          desc: ''
+        });
+      }
     }
+    if (droppedSlots > 0) {
+      warnings.push(
+        `Къайлюля вытеснила ${droppedSlots} уч. слот(ов). Передвиньте её или уменьшите часы задач.`
+      );
+    }
+  }
+
+  if (qSpan) {
+    let qs = qSpan.s;
+    if (entries.some((e) => parseHHMM(e.time) === qs)) qs += 1; // не перекрывать минуту намаза
+    const qe = qs + (qSpan.e - qSpan.s);
+    entries.push({
+      time: toHHMM(qs),
+      end: toHHMM(qe),
+      type: 'qaylulah',
+      title: `Къайлюля · ${qe - qs} мин`,
+      text: 'Полуденный отдых (сунна). Блок не пересекает намазы, учеба его обходит.',
+      desc: ''
+    });
   }
 
   entries.push({
@@ -316,8 +390,17 @@ export function buildDayPlan(input: BuildInput): DayPlan {
   entries.sort((a, b) => {
     const d = MINP(a) - MINP(b);
     if (d !== 0) return d;
-    const order: Record<PEntry['type'], number> = { wake: 0, prayer: 1, study: 2, break: 3, rest: 4, prep: 5, sleep: 6 };
-    return (order[a.type] ?? 7) - (order[b.type] ?? 7);
+    const order: Record<PEntry['type'], number> = {
+      wake: 0,
+      prayer: 1,
+      qaylulah: 2,
+      study: 3,
+      break: 4,
+      rest: 5,
+      prep: 6,
+      sleep: 7
+    };
+    return (order[a.type] ?? 8) - (order[b.type] ?? 8);
   });
   const seen = new Map<number, PEntry>();
   for (const e of entries) {
@@ -387,6 +470,19 @@ export function buildDayPlan(input: BuildInput): DayPlan {
     entries: finalEntries,
     warnings
   };
+}
+
+function subtractSegments(segs: Array<[number, number]>, s: number, e: number): Array<[number, number]> {
+  const out: Array<[number, number]> = [];
+  for (const [a, b] of segs) {
+    if (e <= a || s >= b) {
+      out.push([a, b]);
+      continue;
+    }
+    if (s > a) out.push([a, Math.min(s, b)]);
+    if (e < b) out.push([Math.max(e, a), b]);
+  }
+  return out;
 }
 
 function sameCalendarDay(a: string, b: string): boolean {

@@ -37,6 +37,7 @@ export class AlarmEngine {
       if (!plan) return;
       const now = parseHHMM(toHHMM(d.getHours() * 60 + d.getMinutes()));
       for (const e of plan.entries) {
+        if (e.type === 'qaylulah') continue; // отдых — без будильника
         const m = parseHHMM(e.time);
         if (m !== now) continue;
         const key = `${date}:${e.time}`;

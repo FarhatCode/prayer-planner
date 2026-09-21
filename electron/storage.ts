@@ -1,7 +1,7 @@
 import { app } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { CityMap, DayPlan, PrayerCache, Settings, Task } from '../shared/types';
+import type { CityMap, DayPlan, PrayerCache, Qaylulah, Settings, Task } from '../shared/types';
 import { DEFAULT_SETTINGS, DEFAULT_TASKS } from '../shared/types';
 
 const DATA_VERSION = 1;
@@ -30,6 +30,15 @@ function writeJson(name: string, obj: unknown): void {
   fs.renameSync(tmp, full);
 }
 
+function normQaylulah(q: Partial<Qaylulah> | undefined, def: Qaylulah): Qaylulah {
+  const minutes = Math.round(Number(q?.minutes ?? def.minutes));
+  return {
+    enabled: typeof q?.enabled === 'boolean' ? q.enabled : def.enabled,
+    minutes: Math.max(40, Math.min(60, Number.isFinite(minutes) ? minutes : def.minutes)),
+    start: typeof q?.start === 'string' ? q.start : def.start
+  };
+}
+
 export const storage = {
   settings(): Settings {
     const raw = readJson<Partial<Settings>>('settings.json', {});
@@ -45,7 +54,8 @@ export const storage = {
       volume: Number(raw.volume ?? defaults.volume),
       closeToTray: typeof raw.closeToTray === 'boolean' ? raw.closeToTray : defaults.closeToTray,
       useTaskScheduler: typeof raw.useTaskScheduler === 'boolean' ? raw.useTaskScheduler : defaults.useTaskScheduler,
-      autoLaunch: typeof raw.autoLaunch === 'boolean' ? raw.autoLaunch : defaults.autoLaunch
+      autoLaunch: typeof raw.autoLaunch === 'boolean' ? raw.autoLaunch : defaults.autoLaunch,
+      qaylulah: normQaylulah(raw.qaylulah, defaults.qaylulah)
     };
   },
   setSettings(patch: Partial<Settings>): Settings {
@@ -60,7 +70,8 @@ export const storage = {
       volume: Number(patch.volume ?? base.volume),
       closeToTray: typeof patch.closeToTray === 'boolean' ? patch.closeToTray : base.closeToTray,
       useTaskScheduler: typeof patch.useTaskScheduler === 'boolean' ? patch.useTaskScheduler : base.useTaskScheduler,
-      autoLaunch: typeof patch.autoLaunch === 'boolean' ? patch.autoLaunch : base.autoLaunch
+      autoLaunch: typeof patch.autoLaunch === 'boolean' ? patch.autoLaunch : base.autoLaunch,
+      qaylulah: normQaylulah(patch.qaylulah, base.qaylulah)
     };
     writeJson('settings.json', next);
     return next;
