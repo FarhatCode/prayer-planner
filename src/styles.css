@@ -272,6 +272,25 @@ body {
   margin-top: 8px;
 }
 
+.entry.qaylulah-drag {
+  cursor: ns-resize;
+  touch-action: none;
+  border-style: dashed;
+  border-color: rgba(245, 158, 11, 0.45);
+}
+
+.entry.qaylulah-drag.dragging {
+  opacity: 0.75;
+  border-color: #f59e0b;
+}
+
+.qaylulah-grip {
+  color: #f59e0b;
+  font-weight: 700;
+  letter-spacing: 1px;
+  user-select: none;
+}
+
 .etime {
   font-variant-numeric: tabular-nums;
   font-weight: 700;

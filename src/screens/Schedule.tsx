@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { DayPlan, PEntry, Qaylulah, RegisterResult, UpdateState } from '../../shared/types';
 import { formatDateRu, nowHHMM, parseHHMM, toHHMM } from '../lib/fmt';
 import { qayluAllowedStarts, qayluAutoStart, qayluRangesLabel } from '../lib/qaylulah';
@@ -25,6 +25,15 @@ const DOT: Record<string, string> = {
   qaylulah: '#f59e0b'
 };
 
+function sectionTitle(e: PEntry): string {
+  const time = e.end ? `${e.time} — ${e.end}` : e.time;
+  if (e.type === 'qaylulah') return `${e.title} · ${time}`;
+  if (e.type === 'wake') return `Подъем · ${time}`;
+  if (e.type === 'sleep') return `Отбой · ${time}`;
+  if (e.type === 'prayer') return `${e.title} · ${time}`;
+  return 'День';
+}
+
 function group(entries: PEntry[]): Section[] {
   const out: Section[] = [];
   let cur: Section | null = null;
@@ -33,17 +42,8 @@ function group(entries: PEntry[]): Section[] {
     out.push(cur);
   };
   for (const e of entries) {
-    if (e.type === 'wake') {
-      open(`Подъем · ${e.time}`);
-      cur!.entries.push(e);
-    } else if (e.type === 'sleep') {
-      open(`Отбой · ${e.time}`);
-      cur!.entries.push(e);
-    } else if (e.type === 'prayer') {
-      open(`${e.title} · ${e.time}`);
-      cur!.entries.push(e);
-    } else if (e.type === 'qaylulah') {
-      open(`${e.title} · ${e.time}`);
+    if (e.type === 'wake' || e.type === 'sleep' || e.type === 'prayer' || e.type === 'qaylulah') {
+      open(sectionTitle(e));
       cur!.entries.push(e);
     } else {
       if (!cur) open('День');
@@ -53,105 +53,84 @@ function group(entries: PEntry[]): Section[] {
   return out;
 }
 
-function QaylulahControl({
-  state,
-  onChanged
+function nearestIdx(start: number, starts: number[]): number {
+  let best = 0;
+  for (let i = 0; i < starts.length; i++) {
+    if (Math.abs(starts[i] - start) < Math.abs(starts[best] - start)) best = i;
+  }
+  return best;
+}
+
+function QaylulahRow({
+  e,
+  starts,
+  currentStart,
+  onMove
 }: {
-  state: UpdateState;
-  onChanged: () => Promise<void>;
+  e: PEntry;
+  starts: number[];
+  currentStart: number;
+  onMove: (start: number) => void;
 }) {
-  const [q, setQ] = useState<Qaylulah>(() => ({ ...state.settings.qaylulah }));
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const session = useRef<{ y: number; base: number; last: number } | null>(null);
+  const onMoveRef = useRef(onMove);
+  onMoveRef.current = onMove;
+  const startsRef = useRef(starts);
+  startsRef.current = starts;
+
+  const past = parseHHMM(e.time) <= parseHHMM(nowHHMM());
+
+  function down(ev: React.PointerEvent<HTMLDivElement>): void {
+    ev.preventDefault();
+    session.current = { y: ev.clientY, base: nearestIdx(currentStart, starts), last: nearestIdx(currentStart, starts) };
+    setDragging(true);
+    document.body.style.userSelect = 'none';
+  }
+
   useEffect(() => {
-    setQ((cur) => (cur.enabled === state.settings.qaylulah.enabled ? cur : { ...cur, ...state.settings.qaylulah }));
-  }, [state.settings.qaylulah]);
-
-  const pt = state.prayer?.prayers ?? null;
-  const starts = qayluAllowedStarts(q.minutes, pt);
-  const curStart = ((): number => {
-    if (q.start && q.start.trim().length > 0) return parseHHMM(q.start);
-    return qayluAutoStart(q.minutes, pt) ?? 0;
-  })();
-  const curIdx = starts
-    ? Math.max(0, Math.min(starts.length - 1, starts.indexOf(curStart) >= 0 ? starts.indexOf(curStart) : 0))
-    : 0;
-
-  async function update(next: Qaylulah): Promise<void> {
-    setQ(next);
-    try {
-      await window.api.setSettings({ qaylulah: next });
-    } catch {
-      /* настройки всё равно сохраняются в main */
-    }
-    await onChanged();
-  }
-
-  function changeMinutes(minutes: number): void {
-    const nextStarts = qayluAllowedStarts(minutes, pt);
-    let start = q.start;
-    if (!q.start || q.start.trim().length === 0) {
-      start = qayluAutoStart(minutes, pt) !== null ? toHHMM(qayluAutoStart(minutes, pt)!) : '';
-    } else {
-      const cur = parseHHMM(q.start);
-      if (!nextStarts || nextStarts.length === 0) start = '';
-      else if (nextStarts.indexOf(cur) >= 0) start = q.start;
-      else start = toHHMM(nextStarts.reduce((best, s) => (Math.abs(s - cur) < Math.abs(best - cur) ? s : best), nextStarts[0]));
-    }
-    void update({ ...q, minutes, start });
-  }
+    if (!dragging) return;
+    const mv = (ev: PointerEvent): void => {
+      const s = session.current;
+      if (!s) return;
+      const rowH = ref.current?.offsetHeight || 48;
+      const idx = Math.max(0, Math.min(startsRef.current.length - 1, s.base + Math.round((ev.clientY - s.y) / rowH)));
+      if (idx !== s.last) {
+        s.last = idx;
+        onMoveRef.current(startsRef.current[idx]);
+      }
+    };
+    const up = (): void => {
+      session.current = null;
+      setDragging(false);
+      document.body.style.userSelect = '';
+    };
+    window.addEventListener('pointermove', mv);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+    return () => {
+      window.removeEventListener('pointermove', mv);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+    };
+  }, [dragging]);
 
   return (
-    <div className="panel">
-      <div className="row" style={{ justifyContent: 'space-between' }}>
-        <div>
-          <h2 style={{ marginBottom: 4 }}>Къайлюля (полуденный отдых)</h2>
-          <p className="sub" style={{ margin: 0 }}>
-            От ~часа до Зухра и до Магриба, только не поверх намазов. Учеба автоматически обходит блок, будильники
-            пересчитываются.
-          </p>
+    <div
+      ref={ref}
+      className={`entry type-${e.type} qaylulah-drag${dragging ? ' dragging' : ''}`}
+      style={{ opacity: past ? 0.55 : 1 }}
+      onPointerDown={down}
+    >
+      <div className="etime">{e.end ? `${e.time} — ${e.end}` : e.time}</div>
+      <div className="edot" style={{ background: DOT[e.type] ?? '#94a3b8' }} />
+      <div className="ebody">
+        <div className="etitle">
+          <span className="qaylulah-grip">⠿</span> {e.title}
         </div>
-        <label className="small">
-          <input type="checkbox" checked={q.enabled} onChange={(e) => void update({ ...q, enabled: e.target.checked })} /> На день
-        </label>
+        <div className="etext">{e.text}</div>
       </div>
-      {q.enabled && (
-        <>
-          <div className="row" style={{ gap: 26, marginTop: 10, flexWrap: 'wrap' }}>
-            <label className="small">Длительность</label>
-            <select value={q.minutes} onChange={(e) => changeMinutes(Number(e.target.value))}>
-              {[40, 45, 50, 55, 60].map((m) => (
-                <option key={m} value={m}>
-                  {m} мин
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="row" style={{ gap: 22, marginTop: 8, flexWrap: 'wrap' }}>
-            {starts && starts.length > 0 ? (
-              <div style={{ flex: 1, minWidth: 280 }}>
-                <div className="sub" style={{ margin: 0 }}>
-                  Начало <b>{toHHMM(starts[curIdx])}</b> — до <b>{toHHMM(starts[curIdx] + q.minutes)}</b>
-                </div>
-                <input
-                  type="range"
-                  className="slider"
-                  min={0}
-                  max={starts.length - 1}
-                  step={1}
-                  value={curIdx}
-                  onChange={(e) => void update({ ...q, start: toHHMM(starts[Number(e.target.value)]) })}
-                />
-                <div className="hint" style={{ marginTop: 4 }}>
-                  Перетаскивайте в пределах: {qayluRangesLabel(q.minutes, pt)}
-                </div>
-              </div>
-            ) : (
-              <span className="hint">
-                На {q.minutes} мин сейчас нет места между намазами — возьмите меньше.
-              </span>
-            )}
-          </div>
-        </>
-      )}
     </div>
   );
 }
@@ -189,6 +168,48 @@ export default function Schedule({ state, setBusy }: Props) {
   const [err, setErr] = useState('');
   const [reg, setReg] = useState<RegisterResult | null>(null);
   const [soundMsg, setSoundMsg] = useState('');
+
+  const pt = state.prayer?.prayers ?? null;
+
+  const [q, setQ] = useState<Qaylulah>(() => ({ ...state.settings.qaylulah }));
+  const starts = (q.enabled ? qayluAllowedStarts(q.minutes, pt) : null) ?? [];
+  const curStart = ((): number => {
+    if (q.start && q.start.trim().length > 0) return parseHHMM(q.start);
+    return qayluAutoStart(q.minutes, pt) ?? 0;
+  })();
+
+  async function refreshPlanLight(): Promise<void> {
+    try {
+      const p = await window.api.getPlan();
+      if (p) setPlan(p);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const applyQnext = useCallback(async (next: Qaylulah): Promise<void> => {
+    setQ(next);
+    try {
+      await window.api.setSettings({ qaylulah: next });
+    } catch {
+      /* настройки всё равно сохраняются в main */
+    }
+    await refreshPlanLight();
+  }, []);
+
+  function changeMinutes(minutes: number): void {
+    const nextStarts = qayluAllowedStarts(minutes, pt) ?? [];
+    let start = q.start;
+    if (!q.start || q.start.trim().length === 0) {
+      start = qayluAutoStart(minutes, pt) !== null ? toHHMM(qayluAutoStart(minutes, pt)!) : '';
+    } else {
+      const cur = parseHHMM(q.start);
+      if (nextStarts.length === 0) start = '';
+      else if (nextStarts.indexOf(cur) >= 0) start = q.start;
+      else start = toHHMM(nextStarts[nearestIdx(cur, nextStarts)]);
+    }
+    void applyQnext({ ...q, minutes, start });
+  }
 
   async function soundTest(): Promise<void> {
     setSoundMsg('Проверяю…');
@@ -296,7 +317,40 @@ export default function Schedule({ state, setBusy }: Props) {
         </div>
       </div>
 
-      <QaylulahControl state={state} onChanged={async () => build(false)} />
+      <div className="panel">
+        <div className="row" style={{ justifyContent: 'space-between' }}>
+          <div>
+            <h2 style={{ marginBottom: 4 }}>Къайлюля (полуденный отдых)</h2>
+            <p className="sub" style={{ margin: 0 }}>
+              От ~часа до Зухра и до Магриба, не поверх намазов. После перемещения нажмите
+              «Зарегистрировать будильники», чтобы обновить будильники.
+            </p>
+          </div>
+          <label className="small">
+            <input type="checkbox" checked={q.enabled} onChange={(e) => void applyQnext({ ...q, enabled: e.target.checked })} /> На день
+          </label>
+        </div>
+        {q.enabled && (
+          <>
+            <div className="row" style={{ gap: 22, marginTop: 8, flexWrap: 'wrap' }}>
+              <label className="small">
+                Длительность
+                <select value={q.minutes} onChange={(e) => changeMinutes(Number(e.target.value))}>
+                  {[40, 45, 50, 55, 60].map((m) => (
+                    <option key={m} value={m}>
+                      {m} мин
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <span className="hint">
+                Сейчас: <b>{toHHMM(curStart)} — {toHHMM(curStart + q.minutes)}</b>. Тяните блок «Къайлюля» в списке
+                вверх/вниз — можно ставить в пределах: {qayluRangesLabel(q.minutes, pt) ?? 'нет места'}
+              </span>
+            </div>
+          </>
+        )}
+      </div>
 
       {reg && (
         <div className="panel">
@@ -329,12 +383,22 @@ export default function Schedule({ state, setBusy }: Props) {
           ))}
       </div>
 
-      {group(plan.entries).map((s, i) => (
-        <div key={i}>
+      {group(plan.entries).map((s) => (
+        <div key={s.title}>
           <div className="windowhead">{s.title}</div>
-          {s.entries.map((e, j) => (
-            <EntryRow key={j} e={e} />
-          ))}
+          {s.entries.map((e) =>
+            e.type === 'qaylulah' && starts.length > 0 ? (
+              <QaylulahRow
+                key={e.time}
+                e={e}
+                starts={starts}
+                currentStart={curStart}
+                onMove={(start) => void applyQnext({ ...q, start: toHHMM(start) })}
+              />
+            ) : (
+              <EntryRow key={`${e.time}/${e.title}`} e={e} />
+            )
+          )}
         </div>
       ))}
     </div>

@@ -235,8 +235,9 @@ export default function Settings({ state, onSaved }: Props) {
       <div className="panel">
         <h2>Къайлюля (полуденный отдых)</h2>
         <p className="sub">
-          Сунна полуденного сна/отдыха. Разрешённое место — от ~часа до Зухра и до Магриба (утро не подходит), блок
-          никогда не встаёт поверх намаза. Допустимые диапазоны начала (ЧЧ:ММ):
+          Правило места: от ~часа до Зухра и до Магриба — можно почти везде, утро не подходит. Нельзя только,
+          если блок перекрыл бы время намаза (например, из-за сезона — зимой/летом — до Асра остаётся мало времени).
+          Вводите начало в ЧЧ:ММ; пусто = сразу после Зухра.
         </p>
         <div className="row" style={{ gap: 22, flexWrap: 'wrap' }}>
           <label className="small">
@@ -272,7 +273,9 @@ export default function Settings({ state, onSaved }: Props) {
               </div>
             </div>
             <p className="hint" style={{ marginTop: 8 }}>
-              Можно ставить только: {qayluRangesLabel(form.qaylulah.minutes, preview?.prayers ?? state.prayer?.prayers ?? null) ?? 'нет времён намазов — обновите намазы'}
+              Точные допустимые начала на {form.qaylulah.minutes} мин:{' '}
+              {qayluRangesLabel(form.qaylulah.minutes, preview?.prayers ?? state.prayer?.prayers ?? null) ??
+                'нет времён намазов — обновите намазы'}
             </p>
           </>
         )}
