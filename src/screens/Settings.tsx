@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { PrayerFetchResult, Qaylulah, Settings, UpdateState } from '../../shared/types';
 import { SHORT_LABELS } from '../../shared/types';
 import CityPicker from '../components/CityPicker';
-import { qayluStartValid, qayluRangesLabel, qayluClampMinutes } from '../lib/qaylulah';
+import { qayluStartValid, qayluClampMinutes } from '../lib/qaylulah';
 
 interface Props {
   state: UpdateState;
@@ -235,9 +235,8 @@ export default function Settings({ state, onSaved }: Props) {
       <div className="panel">
         <h2>Къайлюля (полуденный отдых)</h2>
         <p className="sub">
-          Правило места: от ~часа до Зухра и до Магриба — можно почти везде, утро не подходит. Нельзя только,
-          если блок перекрыл бы время намаза (например, из-за сезона — зимой/летом — до Асра остаётся мало времени).
-          Вводите начало в ЧЧ:ММ; пусто = сразу после Зухра.
+          От ~часа до Зухра и до Магриба, не поверх намазов. После перемещения нажмите
+          «Зарегистрировать будильники», чтобы обновить будильники.
         </p>
         <div className="row" style={{ gap: 22, flexWrap: 'wrap' }}>
           <label className="small">
@@ -260,24 +259,17 @@ export default function Settings({ state, onSaved }: Props) {
           </label>
         </div>
         {form.qaylulah.enabled && (
-          <>
-            <div className="settingsgrid" style={{ marginTop: 8 }}>
-              <div className="field">
-                <label>Начало (ЧЧ:ММ; пусто = сразу после Зухра)</label>
-                <input
-                  type="text"
-                  placeholder={'Например 12:00'}
-                  value={form.qaylulah.start}
-                  onChange={(e) => setQaylulah({ start: e.target.value })}
-                />
-              </div>
+          <div className="settingsgrid" style={{ marginTop: 8 }}>
+            <div className="field">
+              <label>Начало</label>
+              <input
+                type="text"
+                placeholder={'Например 12:00'}
+                value={form.qaylulah.start}
+                onChange={(e) => setQaylulah({ start: e.target.value })}
+              />
             </div>
-            <p className="hint" style={{ marginTop: 8 }}>
-              Точные допустимые начала на {form.qaylulah.minutes} мин:{' '}
-              {qayluRangesLabel(form.qaylulah.minutes, preview?.prayers ?? state.prayer?.prayers ?? null) ??
-                'нет времён намазов — обновите намазы'}
-            </p>
-          </>
+          </div>
         )}
       </div>
 

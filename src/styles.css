@@ -273,15 +273,33 @@ body {
 }
 
 .entry.qaylulah-drag {
-  cursor: ns-resize;
+  cursor: grab;
   touch-action: none;
   border-style: dashed;
   border-color: rgba(245, 158, 11, 0.45);
 }
 
+.entry.qaylulah-drag:active,
+.entry.qaylulah-drag.dragging {
+  cursor: grabbing;
+}
+
 .entry.qaylulah-drag.dragging {
   opacity: 0.75;
   border-color: #f59e0b;
+}
+
+.windowhead.qaylulah-head {
+  color: var(--text);
+}
+
+.etime {
+  transition: font-size 0.12s ease, color 0.12s ease;
+}
+
+.etime.drag-big {
+  font-size: 20px;
+  color: #f59e0b;
 }
 
 .qaylulah-grip {

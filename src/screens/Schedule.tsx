@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { DayPlan, PEntry, Qaylulah, RegisterResult, UpdateState } from '../../shared/types';
 import { formatDateRu, nowHHMM, parseHHMM, toHHMM } from '../lib/fmt';
-import { qayluAllowedStarts, qayluAutoStart, qayluRangesLabel } from '../lib/qaylulah';
+import { qayluAllowedStarts, qayluAutoStart } from '../lib/qaylulah';
 
 interface Props {
   state: UpdateState;
@@ -11,6 +11,7 @@ interface Props {
 
 interface Section {
   title: string;
+  qalulah?: boolean;
   entries: PEntry[];
 }
 
@@ -37,13 +38,13 @@ function sectionTitle(e: PEntry): string {
 function group(entries: PEntry[]): Section[] {
   const out: Section[] = [];
   let cur: Section | null = null;
-  const open = (title: string): void => {
-    cur = { title, entries: [] };
+  const open = (title: string, qalulah = false): void => {
+    cur = { title, qalulah, entries: [] };
     out.push(cur);
   };
   for (const e of entries) {
     if (e.type === 'wake' || e.type === 'sleep' || e.type === 'prayer' || e.type === 'qaylulah') {
-      open(sectionTitle(e));
+      open(sectionTitle(e), e.type === 'qaylulah');
       cur!.entries.push(e);
     } else {
       if (!cur) open('День');
@@ -63,8 +64,10 @@ function nearestIdx(start: number, starts: number[]): number {
 
 // Сессия перетаскивания живёт на уровне модуля: пересборка плана во время драга
 // перемонтирует строку, но сессия и слушатели не зависят от React.
+// QDRAG_PX_PER_STEP — сколько пикселей на один шаг (5 мин): маленькое значение
+// делает перемещение быстрым.
+const QDRAG_PX_PER_STEP = 5;
 let qDragSession: { y: number; base: number; last: number } | null = null;
-let qDragRowH = 48;
 let qDragStarts: number[] = [];
 let qDragOnMove: ((start: number) => void) | null = null;
 let qDragLastY = 0;
@@ -72,7 +75,7 @@ let qDragLastY = 0;
 function qDragPointer(): void {
   if (!qDragSession || !qDragOnMove || qDragStarts.length === 0) return;
   const s = qDragSession;
-  const idx = Math.max(0, Math.min(qDragStarts.length - 1, s.base + Math.round((qDragLastY - s.y) / qDragRowH)));
+  const idx = Math.max(0, Math.min(qDragStarts.length - 1, s.base + Math.round((qDragLastY - s.y) / QDRAG_PX_PER_STEP)));
   if (idx === s.last) return;
   s.last = idx;
   qDragOnMove(qDragStarts[idx]);
@@ -114,7 +117,6 @@ function QaylulahRow({
 
   function down(ev: React.PointerEvent<HTMLDivElement>): void {
     ev.preventDefault();
-    qDragRowH = ref.current?.offsetHeight || 48;
     qDragStarts = starts;
     qDragOnMove = onMove;
     qDragLastY = ev.clientY;
@@ -130,7 +132,7 @@ function QaylulahRow({
       style={{ opacity: past ? 0.55 : 1 }}
       onPointerDown={down}
     >
-      <div className="etime">{e.end ? `${e.time} — ${e.end}` : e.time}</div>
+      <div className={`etime${dragging ? ' drag-big' : ''}`}>{e.end ? `${e.time} — ${e.end}` : e.time}</div>
       <div className="edot" style={{ background: DOT[e.type] ?? '#94a3b8' }} />
       <div className="ebody">
         <div className="etitle">
@@ -338,24 +340,18 @@ export default function Schedule({ state, setBusy }: Props) {
           </label>
         </div>
         {q.enabled && (
-          <>
-            <div className="row" style={{ gap: 22, marginTop: 8, flexWrap: 'wrap' }}>
-              <label className="small">
-                Длительность
-                <select value={q.minutes} onChange={(e) => changeMinutes(Number(e.target.value))}>
-                  {[40, 45, 50, 55, 60].map((m) => (
-                    <option key={m} value={m}>
-                      {m} мин
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <span className="hint">
-                Сейчас: <b>{toHHMM(curStart)} — {toHHMM(curStart + q.minutes)}</b>. Тяните блок «Къайлюля» в списке
-                вверх/вниз — можно ставить в пределах: {qayluRangesLabel(q.minutes, pt) ?? 'нет места'}
-              </span>
-            </div>
-          </>
+          <div className="row" style={{ gap: 22, marginTop: 8, flexWrap: 'wrap' }}>
+            <label className="small">
+              Длительность
+              <select value={q.minutes} onChange={(e) => changeMinutes(Number(e.target.value))}>
+                {[40, 45, 50, 55, 60].map((m) => (
+                  <option key={m} value={m}>
+                    {m} мин
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
         )}
       </div>
 
@@ -392,7 +388,7 @@ export default function Schedule({ state, setBusy }: Props) {
 
       {group(plan.entries).map((s, si) => (
         <div key={si}>
-          <div className="windowhead">{s.title}</div>
+          <div className={`windowhead${s.qalulah ? ' qaylulah-head' : ''}`}>{s.title}</div>
           {s.entries.map((e) =>
             e.type === 'qaylulah' && starts.length > 0 ? (
               <QaylulahRow

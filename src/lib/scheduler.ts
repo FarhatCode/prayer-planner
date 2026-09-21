@@ -22,6 +22,9 @@ export const BLOCK_LABELS: Record<AnchorKey, string> = {
   sleep: 'Отбой'
 };
 
+// Длительность блока намаза в списке (≈ 25 мин), сжимается, когда къайлюля рядом.
+export const PRAYER_BLOCK_MIN = 25;
+
 interface Slot {
   dur: number;
 }
@@ -252,11 +255,17 @@ export function buildDayPlan(input: BuildInput): DayPlan {
     // prayer at the start anchor of the window
     const pk = anchorPrayerKey(w.from);
     if (pk) {
-      let endMin = win.b;
+      // Блок намаза — примерно 25 минут; при перетаскивании къайлюли он
+      // поджимается (до 1 мин), а когда къайлюля уходит — восстанавливается.
+      let endMin = Math.min(win.b, win.a + PRAYER_BLOCK_MIN);
       if (pk === 'bamdat' && typeof prayers.praytimes.kun === 'string' && prayers.praytimes.kun.length > 0) {
         // Фаджр длится только до восхода, а не до следующего намаза
-        endMin = parseHHMM(prayers.praytimes.kun);
+        endMin = Math.min(endMin, parseHHMM(prayers.praytimes.kun));
       }
+      if (qSpan && qSpan.s > win.a) {
+        endMin = Math.max(win.a + 1, Math.min(endMin, qSpan.s));
+      }
+      if (endMin <= win.a) endMin = win.a + 1;
       entries.push({
         time: toHHMM(win.a),
         end: toHHMM(endMin),
