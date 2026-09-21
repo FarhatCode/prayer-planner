@@ -6,10 +6,10 @@ directories:
 files:
   - dist/**
   - dist-electron/**
-  - resources/alarm.wav
+  - resources/alarm.mp3
 extraResources:
-  - from: resources/alarm.wav
-    to: alarm.wav
+  - from: resources/alarm.mp3
+    to: alarm.mp3
 win:
   target:
     - target: nsis

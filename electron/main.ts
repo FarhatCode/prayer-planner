@@ -272,8 +272,8 @@ async function ensureTodayPlan(): Promise<DayPlan | null> {
 }
 
 function alarmAudioUrl(): string {
-  if (devServer) return `${devServer.replace(/\/$/, '')}/alarm.wav`;
-  return pathToFileURL(path.join(process.resourcesPath, 'alarm.wav')).href;
+  if (devServer) return `${devServer.replace(/\/$/, '')}/alarm.mp3`;
+  return pathToFileURL(path.join(process.resourcesPath, 'alarm.mp3')).href;
 }
 
 function lookupPrayer(cityId: number): PrayerFetchResult {
