@@ -388,7 +388,7 @@ export default function Schedule({ state, setBusy }: Props) {
 
       {group(plan.entries).map((s, si) => (
         <div key={si}>
-          <div className={`windowhead${s.qalulah ? ' qaylulah-head' : ''}`}>{s.title}</div>
+          {!s.qalulah && <div className="windowhead">{s.title}</div>}
           {s.entries.map((e) =>
             e.type === 'qaylulah' && starts.length > 0 ? (
               <QaylulahRow

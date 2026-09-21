@@ -22,8 +22,13 @@ export const BLOCK_LABELS: Record<AnchorKey, string> = {
   sleep: 'Отбой'
 };
 
-// Длительность блока намаза в списке (≈ 25 мин), сжимается, когда къайлюля рядом.
-export const PRAYER_BLOCK_MIN = 25;
+// Длительность блока намаза в списке: Зухр ~30 мин, остальные ~20.
+// Если къайлюля занимает это место, блок намаза рисуется сразу под
+// къайлюлей (время намаза не переносится — будильник остаётся в alarmTime).
+export const PRAYER_DHUHR_MIN = 30;
+export const PRAYER_OTHER_MIN = 20;
+// Минимальный видимый блок намаза.
+export const PRAYER_MIN_MIN = 2;
 
 interface Slot {
   dur: number;
@@ -80,11 +85,15 @@ export function buildDayPlan(input: BuildInput): DayPlan {
     const b = anchors[w.to];
     const workA = a + w.startPadMin;
     const workB = b - w.endPadMin;
-    const segs = qSpan
-      ? subtractSegments([[workA, workB]] as Array<[number, number]>, qSpan.s, qSpan.e)
-      : ([[workA, workB]] as Array<[number, number]>);
+    const pk = anchorPrayerKey(w.from);
+    const pb = pk ? prayerBlockLayout(a, prayerCap(w, anchors, prayers), w.from, qSpan) : null;
+    const carves: Array<[number, number]> = [];
+    if (qSpan) carves.push([qSpan.s, qSpan.e]);
+    if (pb) carves.push([pb.startM, pb.endM]);
+    let segs: Array<[number, number]> = [[workA, workB]];
+    for (const [cs, ce] of carves) segs = subtractSegments(segs, cs, ce);
     const work = segs.reduce((sum, [x, y]) => sum + (y - x), 0);
-    return { w, a, b, workA, workB, segs, work };
+    return { w, a, b, workA, workB, pk, pb, segs, work };
   });
 
   const usable: number[] = [];
@@ -253,25 +262,14 @@ export function buildDayPlan(input: BuildInput): DayPlan {
     };
 
     // prayer at the start anchor of the window
-    const pk = anchorPrayerKey(w.from);
-    if (pk) {
-      // Блок намаза — примерно 25 минут; при перетаскивании къайлюли он
-      // поджимается (до 1 мин), а когда къайлюля уходит — восстанавливается.
-      let endMin = Math.min(win.b, win.a + PRAYER_BLOCK_MIN);
-      if (pk === 'bamdat' && typeof prayers.praytimes.kun === 'string' && prayers.praytimes.kun.length > 0) {
-        // Фаджр длится только до восхода, а не до следующего намаза
-        endMin = Math.min(endMin, parseHHMM(prayers.praytimes.kun));
-      }
-      if (qSpan && qSpan.s > win.a) {
-        endMin = Math.max(win.a + 1, Math.min(endMin, qSpan.s));
-      }
-      if (endMin <= win.a) endMin = win.a + 1;
+    if (win.pb && win.pk) {
       entries.push({
-        time: toHHMM(win.a),
-        end: toHHMM(endMin),
+        time: toHHMM(win.pb.startM),
+        end: toHHMM(win.pb.endM),
+        alarmTime: toHHMM(win.pb.alarmM),
         type: 'prayer',
         title: SHORT_LABELS[w.from] ?? BLOCK_LABELS[w.from],
-        text: `${SHORT_LABELS[w.from] ?? BLOCK_LABELS[w.from]} · ${toHHMM(win.a)}`,
+        text: `${SHORT_LABELS[w.from] ?? BLOCK_LABELS[w.from]} · ${toHHMM(win.pb.alarmM)}`,
         desc: ''
       });
     }
@@ -492,6 +490,47 @@ function subtractSegments(segs: Array<[number, number]>, s: number, e: number): 
     if (e < b) out.push([Math.max(e, a), b]);
   }
   return out;
+}
+
+// Верхняя граница блока намаза: следующий намаз (для Фаджра — восход).
+function prayerCap(
+  w: { from: AnchorKey; to: AnchorKey },
+  anchors: Record<AnchorKey, number>,
+  prayers: PrayerCache
+): number {
+  const cap = anchors[w.to];
+  if (w.from === 'fajr' && typeof prayers.praytimes.kun === 'string' && prayers.praytimes.kun.length > 0) {
+    return Math.min(cap, parseHHMM(prayers.praytimes.kun));
+  }
+  return cap;
+}
+
+// Положение блока намаза. Зухр занимает ~30 мин, остальные ~20.
+// Если къайлюля встаёт на блок и сверху нет места на полный блок —
+// намаз-блок рисуется сразу под къайлюлей (время намаза остаётся в alarmM).
+function prayerBlockLayout(
+  P: number,
+  cap: number,
+  from: AnchorKey,
+  qSpan: { s: number; e: number } | null
+): { startM: number; endM: number; alarmM: number } {
+  const dur = from === 'dhuhr' ? PRAYER_DHUHR_MIN : PRAYER_OTHER_MIN;
+  const cap2 = Math.max(cap, P + 1);
+  let startM = P;
+  let endM = Math.min(cap2, P + dur);
+  if (qSpan && qSpan.s < endM && qSpan.e > startM) {
+    const belowS = Math.max(startM, qSpan.e);
+    const belowE = Math.min(cap2, belowS + dur);
+    if (belowE - belowS >= PRAYER_MIN_MIN) {
+      startM = belowS;
+      endM = belowE;
+    } else {
+      endM = Math.min(cap2, Math.max(startM + PRAYER_MIN_MIN, Math.min(endM, qSpan.s)));
+    }
+  }
+  if (endM <= startM) endM = Math.min(cap2, startM + PRAYER_MIN_MIN);
+  if (endM <= startM) endM = startM + 1;
+  return { startM, endM, alarmM: P };
 }
 
 function sameCalendarDay(a: string, b: string): boolean {

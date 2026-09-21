@@ -38,12 +38,13 @@ export class AlarmEngine {
       const now = parseHHMM(toHHMM(d.getHours() * 60 + d.getMinutes()));
       for (const e of plan.entries) {
         if (e.type === 'qaylulah') continue; // отдых — без будильника
-        const m = parseHHMM(e.time);
+        const alarmHHMM = e.alarmTime ?? e.time;
+        const m = parseHHMM(alarmHHMM);
         if (m !== now) continue;
-        const key = `${date}:${e.time}`;
+        const key = `${date}:${alarmHHMM}`;
         if (this.fired.has(key)) continue;
         this.fired.add(key);
-        this.opts.openAlarm({ entry: e, test: false });
+        this.opts.openAlarm({ entry: { ...e, time: alarmHHMM }, test: false });
       }
     } catch {
       /* never crash the app from the engine */

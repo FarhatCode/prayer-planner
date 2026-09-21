@@ -103,6 +103,7 @@ export type PEntryType = 'wake' | 'prayer' | 'study' | 'break' | 'rest' | 'prep'
 export interface PEntry {
   time: string; // "HH:MM"
   end?: string; // "HH:MM" — до какого времени длится пункт (для панели)
+  alarmTime?: string; // "HH:MM" — время будильника, если оно отличается от показанного (намаз).
   type: PEntryType;
   taskId?: string;
   title: string;

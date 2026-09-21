@@ -289,10 +289,6 @@ body {
   border-color: #f59e0b;
 }
 
-.windowhead.qaylulah-head {
-  color: var(--text);
-}
-
 .etime {
   transition: font-size 0.12s ease, color 0.12s ease;
 }

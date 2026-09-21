@@ -97,7 +97,8 @@ export function registerDayTasks(plan: DayPlan, launch: LaunchInfo, now = new Da
   let skipped = 0;
   for (const e of plan.entries) {
     if (e.type === 'qaylulah') continue; // отдых — без будильника
-    const when = parsePlanWhen(plan.date, e.time);
+    const alarmHHMM = e.alarmTime ?? e.time;
+    const when = parsePlanWhen(plan.date, alarmHHMM);
     if (!when) {
       skipped++;
       continue;
@@ -106,7 +107,7 @@ export function registerDayTasks(plan: DayPlan, launch: LaunchInfo, now = new Da
       skipped++;
       continue;
     }
-    const payload = b64url(JSON.stringify({ entry: e, test: false }));
+    const payload = b64url(JSON.stringify({ entry: { ...e, time: alarmHHMM }, test: false }));
     const prefix = [launch.exe, ...launch.prefixArgs].filter(Boolean).map((p) => `"${p.replace(/"/g, '')}"`).join(' ');
     const arg = `${prefix} --alarm "${payload}"`;
     items.push({ name: `${ALARM_PREFIX}${whenStr(when).replace(/[-: ]/g, '')}`, when: whenStr(when), arg })
