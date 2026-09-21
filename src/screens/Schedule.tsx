@@ -61,6 +61,41 @@ function nearestIdx(start: number, starts: number[]): number {
   return best;
 }
 
+// Сессия перетаскивания живёт на уровне модуля: пересборка плана во время драга
+// перемонтирует строку, но сессия и слушатели не зависят от React.
+let qDragSession: { y: number; base: number; last: number } | null = null;
+let qDragRowH = 48;
+let qDragStarts: number[] = [];
+let qDragOnMove: ((start: number) => void) | null = null;
+let qDragLastY = 0;
+
+function qDragPointer(): void {
+  if (!qDragSession || !qDragOnMove || qDragStarts.length === 0) return;
+  const s = qDragSession;
+  const idx = Math.max(0, Math.min(qDragStarts.length - 1, s.base + Math.round((qDragLastY - s.y) / qDragRowH)));
+  if (idx === s.last) return;
+  s.last = idx;
+  qDragOnMove(qDragStarts[idx]);
+}
+
+function qDragHandleMove(ev: PointerEvent): void {
+  if (!qDragSession) return;
+  qDragLastY = ev.clientY;
+  qDragPointer();
+}
+
+function qDragHandleEnd(): void {
+  qDragSession = null;
+  qDragOnMove = null;
+  document.body.style.userSelect = '';
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('pointermove', qDragHandleMove);
+  window.addEventListener('pointerup', qDragHandleEnd);
+  window.addEventListener('pointercancel', qDragHandleEnd);
+}
+
 function QaylulahRow({
   e,
   starts,
@@ -74,47 +109,19 @@ function QaylulahRow({
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [dragging, setDragging] = useState(false);
-  const session = useRef<{ y: number; base: number; last: number } | null>(null);
-  const onMoveRef = useRef(onMove);
-  onMoveRef.current = onMove;
-  const startsRef = useRef(starts);
-  startsRef.current = starts;
 
   const past = parseHHMM(e.time) <= parseHHMM(nowHHMM());
 
   function down(ev: React.PointerEvent<HTMLDivElement>): void {
     ev.preventDefault();
-    session.current = { y: ev.clientY, base: nearestIdx(currentStart, starts), last: nearestIdx(currentStart, starts) };
+    qDragRowH = ref.current?.offsetHeight || 48;
+    qDragStarts = starts;
+    qDragOnMove = onMove;
+    qDragLastY = ev.clientY;
+    qDragSession = { y: ev.clientY, base: nearestIdx(currentStart, starts), last: nearestIdx(currentStart, starts) };
     setDragging(true);
     document.body.style.userSelect = 'none';
   }
-
-  useEffect(() => {
-    if (!dragging) return;
-    const mv = (ev: PointerEvent): void => {
-      const s = session.current;
-      if (!s) return;
-      const rowH = ref.current?.offsetHeight || 48;
-      const idx = Math.max(0, Math.min(startsRef.current.length - 1, s.base + Math.round((ev.clientY - s.y) / rowH)));
-      if (idx !== s.last) {
-        s.last = idx;
-        onMoveRef.current(startsRef.current[idx]);
-      }
-    };
-    const up = (): void => {
-      session.current = null;
-      setDragging(false);
-      document.body.style.userSelect = '';
-    };
-    window.addEventListener('pointermove', mv);
-    window.addEventListener('pointerup', up);
-    window.addEventListener('pointercancel', up);
-    return () => {
-      window.removeEventListener('pointermove', mv);
-      window.removeEventListener('pointerup', up);
-      window.removeEventListener('pointercancel', up);
-    };
-  }, [dragging]);
 
   return (
     <div
@@ -383,13 +390,13 @@ export default function Schedule({ state, setBusy }: Props) {
           ))}
       </div>
 
-      {group(plan.entries).map((s) => (
-        <div key={s.title}>
+      {group(plan.entries).map((s, si) => (
+        <div key={si}>
           <div className="windowhead">{s.title}</div>
           {s.entries.map((e) =>
             e.type === 'qaylulah' && starts.length > 0 ? (
               <QaylulahRow
-                key={e.time}
+                key="qaylulah"
                 e={e}
                 starts={starts}
                 currentStart={curStart}
