@@ -100,6 +100,11 @@ function positionAlarm(win: BrowserWindow): void {
 }
 
 function openAlarm(payload: AlarmPayload): void {
+  // Не держим несколько звонящих окон одновременно: звук с `loop` в старых
+  // окнах продолжал бы играть, пока их не закроют. Новый звонок гасит прежний.
+  for (const w of alarmWindows) {
+    if (!w.isDestroyed()) w.destroy();
+  }
   const data = Buffer.from(
     JSON.stringify({ ...payload, volume: storage.settings().volume }),
     'utf8'
