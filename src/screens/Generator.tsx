@@ -18,8 +18,10 @@ export default function Generator({ state, onSaved }: Props) {
     (w) => `${SHORT_LABELS[w.from] ?? w.from} → ${SHORT_LABELS[w.to] ?? w.to}`
   );
 
-  const totalHours = tasks.reduce((s, t) => s + t.hours, 0);
-  const totalMinutes = tasks.reduce((s, t) => s + Math.max(1, Math.round(t.hours * 60)), 0);
+  const activeTasks = tasks.filter((t) => t.active !== false);
+  const totalHours = activeTasks.reduce((s, t) => s + t.hours, 0);
+  const totalMinutes = activeTasks.reduce((s, t) => s + Math.max(1, Math.round(t.hours * 60)), 0);
+  const inactiveCount = tasks.length - activeTasks.length;
 
   const update = (i: number, next: Task) => setTasks((ts) => ts.map((t, j) => (j === i ? next : t)));
   const remove = (i: number) => setTasks((ts) => ts.filter((_, j) => j !== i));
@@ -57,6 +59,7 @@ export default function Generator({ state, onSaved }: Props) {
         <p className="sub">
           Каждая задача режется на слоты по {state.settings.slotMin} мин с перерывами между ними. Всего: {totalHours} ч
           ({totalMinutes} мин). Слоты учебы никогда не ужимаются — при нехватке места сначала сокращаются перерывы.
+          {inactiveCount > 0 && <span className="hint"> Неактивные ({inactiveCount}) в план не попадают.</span>}
         </p>
         <div className="row">
           <button className="btn" onClick={add}>

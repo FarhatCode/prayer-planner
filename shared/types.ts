@@ -96,6 +96,7 @@ export interface Task {
   color: string;
   pinnedWindow?: number; // index into settings.windows
   canMove: boolean;
+  active?: boolean; // false = задача сохранена, но в план не попадает
 }
 
 export type PEntryType = 'wake' | 'prayer' | 'study' | 'break' | 'rest' | 'prep' | 'sleep' | 'qaylulah';

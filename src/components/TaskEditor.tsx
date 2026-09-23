@@ -14,7 +14,10 @@ export default function TaskEditor({ task, windowNames, onChange, onDelete }: Pr
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="taskcard" style={{ borderLeft: `4px solid ${task.color || '#4c86f5'}` }}>
+    <div
+      className={task.active === false ? 'taskcard inactive' : 'taskcard'}
+      style={{ borderLeft: `4px solid ${task.color || '#4c86f5'}` }}
+    >
       <div className="taskrow">
         <button
           className="btn ghost"
@@ -67,6 +70,14 @@ export default function TaskEditor({ task, windowNames, onChange, onDelete }: Pr
             onChange={(e) => onChange({ ...task, canMove: e.target.checked })}
           />
           переносить
+        </label>
+        <label className="small" title="Неактивная задача сохраняется, но в план не попадает">
+          <input
+            type="checkbox"
+            checked={task.active === false}
+            onChange={(e) => onChange({ ...task, active: !e.target.checked })}
+          />
+          неактивно
         </label>
         <div className="row" style={{ gap: 4 }}>
           {COLORS.map((c) => (

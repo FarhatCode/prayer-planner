@@ -108,9 +108,9 @@ export function buildDayPlan(input: BuildInput): DayPlan {
     }
   });
 
-  const prepared: PreparedTask[] = tasks.map((task) =>
-    prepareTask(task, slotMin, windows.length)
-  );
+  const prepared: PreparedTask[] = tasks
+    .filter((t) => t.active !== false)
+    .map((task) => prepareTask(task, slotMin, windows.length));
 
   const assigned: PreparedTask[][] = windows.map(() => []);
   const breaksUsed: number[] = windows.map(() => 0);

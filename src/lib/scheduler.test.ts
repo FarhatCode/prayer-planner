@@ -97,6 +97,14 @@ describe('scheduler', () => {
     assertInside(plan);
   });
 
+  it('excludes inactive tasks from the plan (active: false)', () => {
+    const tasks: Task[] = DEFAULT_TASKS_3.map((t, i) => ({ ...t, active: i !== 1 }));
+    const plan = buildDayPlan({ settings: DEFAULT_SETTINGS, tasks, prayers: FX });
+    expect(plan.entries.some((e) => e.type === 'study' && e.title.includes('Вопрос Динару'))).toBe(false);
+    expect(plan.entries.some((e) => e.type === 'study' && e.title.includes('Курс Ильнура'))).toBe(true);
+    expect(plan.entries.some((e) => e.type === 'study' && e.title.includes('edX CS'))).toBe(true);
+  });
+
   it('produces unique times per entry', () => {
     const plan = buildDayPlan({ settings: DEFAULT_SETTINGS, tasks: DEFAULT_TASKS_3, prayers: FX });
     const times = plan.entries.map((e) => e.time);
